@@ -1,12 +1,13 @@
 import type { Db, Queryable } from '../../db/index.js';
 import type { CoreDeps } from '../../shared/deps.js';
+import { requireSignedOff } from '../legal/service.js';
 import { notifyUsers } from '../notifications/service.js';
 import { AppError } from '../../shared/errors.js';
 import { audit } from '../audit/service.js';
 import { statusLabel } from '../credentials/labels.js';
 import { experienceYears } from '../matching/eligibility.js';
 import { evaluateMatch } from '../matching/loader.js';
-import { createShiftOffer, respondToShiftOffer } from '../applications/shift-offers-service.js';
+import { RefusedForEligibility, createShiftOfferTx, respondToShiftOfferTx } from '../applications/shift-offers-service.js';
 
 export const MIN_COUNT_SHOWN = 5;
 export const REQUEST_TTL_HOURS = 48;
@@ -62,6 +63,7 @@ export async function sharedRegion(q: Queryable, organizationId: string, profess
  * the shift, so its eligibility, conflict and capacity rules apply unchanged.
  */
 export async function acceptFloatRequest(db: Db, input: { requestId: string; professionalId: string; userId: string; httpRequestId: string; now: Date }) {
+  await requireSignedOff(db, 'float_pool');
   await expireFloatRequests(db, input.now);
   const [claimed] = await db.query<{ id: string; organization_id: string; region_id: string; shift_id: string; hourly_rate_cents: number; message: string | null; created_by: string }>(
     `UPDATE float_requests SET responded_at = $3 WHERE id = $1 AND professional_id = $2 AND status = 'pending' AND responded_at IS NULL
@@ -90,35 +92,32 @@ export async function acceptFloatRequest(db: Db, input: { requestId: string; pro
     return fail('You do not currently meet the requirements for this shift.', { outcome: match.eligibility.outcome, reasons: match.eligibility.reasons });
   }
 
-  // ---- book it through the normal path
-  let applicationId: string | null = null;
+  // ---- book it through the normal path, all or nothing: if any step fails, nothing is left behind (no application, no offer), so the
+  // facility never learns who the person is for a booking that did not happen.
   try {
-    const [existing] = await db.query<{ id: string; status: string }>('SELECT id, status FROM applications WHERE job_id = $1 AND professional_id = $2', [shift.job_id, input.professionalId]);
-    if (existing && CLOSED_APPLICATION.includes(existing.status)) return fail('You have a closed application for this job, so it cannot be booked through the pool.');
-    applicationId = existing?.id ?? (await db.transaction(async (tx) => {
-      const [row] = await tx.query<{ id: string }>(
-        `INSERT INTO applications (job_id, organization_id, professional_id, source) VALUES ($1,$2,$3,'float_pool') RETURNING id`, [shift.job_id, claimed.organization_id, input.professionalId]);
-      await tx.query(`INSERT INTO application_events (application_id, actor_user_id, actor_kind, from_status, to_status, reason) VALUES ($1,$2,'professional',NULL,'submitted','Accepted a regional float request')`, [row!.id, input.userId]);
-      return row!.id;
-    }));
-    await db.query('INSERT INTO application_shifts (application_id, shift_id, organization_id) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING', [applicationId, claimed.shift_id, claimed.organization_id]);
-
-    const offer = await createShiftOffer(db, {
-      organizationId: claimed.organization_id, applicationId, shiftId: claimed.shift_id, actorUserId: claimed.created_by,
-      hourlyRateCents: claimed.hourly_rate_cents, message: claimed.message ?? undefined, requestId: input.httpRequestId, now: input.now,
+    const booked = await db.transaction(async (tx) => {
+      const [existing] = await tx.query<{ id: string; status: string }>('SELECT id, status FROM applications WHERE job_id = $1 AND professional_id = $2 FOR UPDATE', [shift.job_id, input.professionalId]);
+      if (existing && CLOSED_APPLICATION.includes(existing.status)) throw new AppError('CONFLICT', 'You have a closed application for this job, so it cannot be booked through the pool.');
+      let applicationId = existing?.id;
+      if (!applicationId) {
+        const [row] = await tx.query<{ id: string }>(`INSERT INTO applications (job_id, organization_id, professional_id, source) VALUES ($1,$2,$3,'float_pool') RETURNING id`, [shift.job_id, claimed.organization_id, input.professionalId]);
+        applicationId = row!.id;
+        await tx.query(`INSERT INTO application_events (application_id, actor_user_id, actor_kind, from_status, to_status, reason) VALUES ($1,$2,'professional',NULL,'submitted','Accepted a regional float request')`, [applicationId, input.userId]);
+      }
+      await tx.query('INSERT INTO application_shifts (application_id, shift_id, organization_id) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING', [applicationId, claimed.shift_id, claimed.organization_id]);
+      const offer = await createShiftOfferTx(tx, {
+        organizationId: claimed.organization_id, applicationId, shiftId: claimed.shift_id, actorUserId: claimed.created_by,
+        hourlyRateCents: claimed.hourly_rate_cents, message: claimed.message ?? undefined, requestId: input.httpRequestId, now: input.now,
+      });
+      const accepted = await respondToShiftOfferTx(tx, { offerId: offer.id, professionalId: input.professionalId, actorUserId: input.userId, response: 'accepted', requestId: input.httpRequestId, now: input.now });
+      await tx.query(`UPDATE float_requests SET status = 'accepted', application_id = $2, offer_id = $3 WHERE id = $1`, [claimed.id, applicationId, offer.id]);
+      await audit(tx, { actorUserId: input.userId, action: 'float_request.accepted', targetType: 'float_request', targetId: claimed.id, organizationId: claimed.organization_id, requestId: input.httpRequestId, metadata: { assignmentId: accepted.assignmentId } });
+      return accepted;
     });
-    const accepted = await respondToShiftOffer(db, { offerId: offer.id, professionalId: input.professionalId, actorUserId: input.userId, response: 'accepted', requestId: input.httpRequestId, now: input.now });
-    await db.query(`UPDATE float_requests SET status = 'accepted', application_id = $2, offer_id = $3 WHERE id = $1`, [claimed.id, applicationId, offer.id]);
-    await audit(db, { actorUserId: input.userId, action: 'float_request.accepted', targetType: 'float_request', targetId: claimed.id, organizationId: claimed.organization_id, requestId: input.httpRequestId, metadata: { assignmentId: accepted.assignmentId } });
-    return { organizationId: claimed.organization_id, assignmentId: accepted.assignmentId, jobTitle: shift.title, shiftId: claimed.shift_id, createdBy: claimed.created_by };
+    return { organizationId: claimed.organization_id, assignmentId: booked.assignmentId, jobTitle: shift.title, shiftId: claimed.shift_id, createdBy: claimed.created_by };
   } catch (e) {
-    // Something changed between the checks and the booking (for example another person took the last position). Undo what we
-    // created so the facility is not left with a stray application, then report it.
-    if (applicationId) {
-      await db.query(`UPDATE shift_offers SET status = 'withdrawn', responded_at = now() WHERE application_id = $1 AND status = 'sent'`, [applicationId]);
-      await db.query(`UPDATE applications SET status = 'withdrawn', updated_at = now() WHERE id = $1 AND status = 'submitted'`, [applicationId]);
-    }
-    const message = e instanceof AppError ? e.message : 'The shift could not be booked.';
+    // The transaction rolled back. Record why on the request (outside it) so both sides can see what happened.
+    const message = e instanceof RefusedForEligibility ? 'You no longer meet the requirements for this shift.' : e instanceof AppError ? e.message : 'The shift could not be booked.';
     await db.query(`UPDATE float_requests SET status = 'failed', failure_reason = $2 WHERE id = $1`, [claimed.id, message]);
     throw e instanceof AppError ? e : new AppError('CONFLICT', message);
   }
@@ -134,6 +133,7 @@ export async function createFloatRequest(deps: Pick<CoreDeps, 'db' | 'email'>, i
   userId: string; requestId: string; now: Date; origin?: 'facility' | 'recovery'; ttlHours?: number;
 }) {
   const { db } = deps;
+  await requireSignedOff(db, 'float_pool');
   await expireFloatRequests(db, input.now);
   const [shift] = await db.query<{ job_id: string; status: string; starts_at: Date; hourly_rate_cents: number | null; state: string; title: string }>(
     `SELECT s.job_id, s.status, s.starts_at, s.hourly_rate_cents, l.state, j.title FROM shifts s JOIN jobs j ON j.id = s.job_id JOIN facility_locations l ON l.id = j.location_id

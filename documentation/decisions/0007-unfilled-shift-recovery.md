@@ -42,3 +42,10 @@ It never contacts people outside the platform, never uses talent-search candidat
 - Candidates are ordered by the existing ranking; there is no fairness rotation among applicants.
 - "Administrative workflow after acceptance" is limited to what the platform already does (assignment, notifications, timesheet, review, billing). There is no onboarding paperwork, orientation or facility-specific forms.
 - No push notifications or native app; a professional learns of an offer through in-app notification and, where configured, email.
+
+## Update: decisions and changes
+- **Defaults confirmed by the product owner**: off until switched on; 5 automatic offers per shift; offers open 12 hours; escalate within 48 hours; no new offers within 2 hours; applicants then float pool members.
+- **Legal gate**: automatic outreach is also gated by a recorded legal sign-off. Without it, an organization cannot turn it on and the passes send nothing, even for organizations that had already switched it on.
+- **Several API servers**: the timer now takes a database lease (`scheduler_leases`) so only one server runs each pass. A dedicated worker remains the longer-term plan.
+- **Undo**: still 5 minutes. After 3 undos in 30 days a reason is required, and staff can see the counts. Undone bookings never count against reliability.
+- **After acceptance**: nothing more for the pilot (no onboarding checklist, reminders or document sharing).

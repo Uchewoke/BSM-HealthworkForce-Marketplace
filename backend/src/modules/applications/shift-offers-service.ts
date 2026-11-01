@@ -1,4 +1,4 @@
-import type { Db } from '../../db/index.js';
+import type { Db, Queryable } from '../../db/index.js';
 import { AppError } from '../../shared/errors.js';
 import { audit } from '../audit/service.js';
 import { evaluateMatch, snapshotMatch, type MatchResult } from '../matching/loader.js';
@@ -13,6 +13,9 @@ const OFFERABLE_JOB = ['published', 'paused'];
 export const DEFAULT_OFFER_HOURS = 48;
 /** A professional can take back an acceptance this soon after making it, with no reason needed and no mark against their record. */
 export const UNDO_WINDOW_MINUTES = 5;
+/** Undoing is free, but after this many undos in the window the professional is asked to say why, and staff can see the pattern. */
+export const UNDO_REASON_AFTER = 3;
+export const UNDO_COUNT_DAYS = 30;
 
 export const statusText = (s: string) => s.replace(/_/g, ' ');
 
@@ -27,7 +30,7 @@ async function requireApprovedOrg(tx: Pick<Db, 'query'>, organizationId: string)
 }
 
 /** Thrown inside a transaction to roll it back; carries what is needed to record the refusal afterwards. */
-class RefusedForEligibility extends Error {
+export class RefusedForEligibility extends Error {
   constructor(
     readonly match: MatchResult,
     readonly context: { applicationId: string; organizationId: string; jobId: string; professionalId: string; trigger: 'offer' | 'accept'; offerId?: string },
@@ -44,12 +47,14 @@ async function recordRefusal(db: Db, e: RefusedForEligibility, actorUserId: stri
   throw new AppError('CONFLICT', 'The candidate is not currently eligible for this shift.', { outcome: e.match.eligibility.outcome, reasons: e.match.eligibility.reasons });
 }
 
-export async function createShiftOffer(db: Db, input: {
+export interface CreateOfferInput {
   organizationId: string; applicationId: string; shiftId: string; actorUserId: string;
   hourlyRateCents?: number; message?: string; expiresInHours?: number; requestId: string; now: Date; origin?: 'facility' | 'recovery';
-}) {
-  await expireOffers(db, input.now);
-  return db.transaction(async (tx) => {
+}
+
+/** Sends one offer inside a transaction the caller owns, so it can be combined with other steps all-or-nothing. */
+export async function createShiftOfferTx(tx: Queryable, input: CreateOfferInput) {
+  {
     const [app] = await tx.query<{ id: string; status: string; job_id: string; professional_id: string; job_status: string; title: string }>(
       `SELECT a.id, a.status, a.job_id, a.professional_id, j.status AS job_status, j.title
          FROM applications a JOIN jobs j ON j.id = a.job_id
@@ -90,7 +95,12 @@ export async function createShiftOffer(db: Db, input: {
       organizationId: input.organizationId, requestId: input.requestId, metadata: { shiftId: shift.id, applicationId: app.id },
     });
     return { id: offer!.id, status: 'sent' as const, professionalId: app.professional_id, jobTitle: app.title, shiftId: shift.id, expiresAt };
-  }).catch((e) => {
+  }
+}
+
+export async function createShiftOffer(db: Db, input: CreateOfferInput) {
+  await expireOffers(db, input.now);
+  return db.transaction((tx) => createShiftOfferTx(tx, input)).catch((e) => {
     if (e instanceof RefusedForEligibility) return recordRefusal(db, e, input.actorUserId, input.requestId, 'shift_offer.refused_ineligible');
     throw e;
   });
@@ -112,11 +122,11 @@ export async function withdrawShiftOffer(db: Db, input: { organizationId: string
   });
 }
 
-export async function respondToShiftOffer(db: Db, input: {
-  offerId: string; professionalId: string; actorUserId: string; response: 'accepted' | 'declined'; requestId: string; now: Date;
-}) {
-  await expireOffers(db, input.now);
-  return db.transaction(async (tx) => {
+export interface RespondInput { offerId: string; professionalId: string; actorUserId: string; response: 'accepted' | 'declined'; requestId: string; now: Date }
+
+/** Answers an offer inside a transaction the caller owns. */
+export async function respondToShiftOfferTx(tx: Queryable, input: RespondInput) {
+  {
     const [offer] = await tx.query<{
       id: string; status: string; organization_id: string; shift_id: string; application_id: string; hourly_rate_cents: number; expires_at: string; job_id: string; title: string;
     }>(
@@ -168,7 +178,12 @@ export async function respondToShiftOffer(db: Db, input: {
       organizationId: offer.organization_id, requestId: input.requestId, metadata: { offerId: offer.id, shiftId: offer.shift_id },
     });
     return { offerId: offer.id, status: 'accepted' as const, assignmentId: asg!.id, organizationId: offer.organization_id, jobTitle: offer.title, shiftId: offer.shift_id };
-  }).catch((e) => {
+  }
+}
+
+export async function respondToShiftOffer(db: Db, input: RespondInput) {
+  await expireOffers(db, input.now);
+  return db.transaction((tx) => respondToShiftOfferTx(tx, input)).catch((e) => {
     if (e instanceof RefusedForEligibility) return recordRefusal(db, e, input.actorUserId, input.requestId, 'shift_offer.accept_refused_ineligible');
     throw e;
   });
@@ -199,10 +214,16 @@ export async function transitionAssignment(db: Db, input: {
     if (!a) throw new AppError('NOT_FOUND', 'Resource not found.');
     const rule = ASSIGNMENT_RULES.find((r) => r.to === input.to && r.actor === input.actorKind);
     if (!rule || a.status !== 'confirmed') throw new AppError('CONFLICT', `Cannot change an assignment from ${statusText(a.status)} to ${statusText(input.to)}.`);
+    let undosLately = 0;
     if (input.undo) {
       if (input.to !== 'cancelled_by_professional') throw new AppError('BAD_REQUEST', 'Only a professional\u2019s own acceptance can be undone.');
       if (input.now.getTime() - new Date(a.created_at).getTime() > UNDO_WINDOW_MINUTES * 60_000) {
         throw new AppError('CONFLICT', `The ${UNDO_WINDOW_MINUTES}-minute undo window has passed. You can still cancel this shift from your assignments with a reason.`);
+      }
+      const [recent] = await tx.query<{ n: string }>('SELECT count(*) AS n FROM assignments WHERE professional_id = $1 AND undone_at > $2', [a.professional_id, new Date(input.now.getTime() - UNDO_COUNT_DAYS * 86_400_000)]);
+      undosLately = Number(recent?.n ?? 0);
+      if (undosLately >= UNDO_REASON_AFTER && (input.reason?.trim().length ?? 0) < 3) {
+        throw new AppError('VALIDATION_FAILED', `You have undone ${undosLately} bookings in the last ${UNDO_COUNT_DAYS} days. Please say why this one is being undone.`, { fieldErrors: { reason: ['Required'] } });
       }
     } else if (rule.reasonRequired && !input.reason?.trim()) throw new AppError('VALIDATION_FAILED', 'A reason is required.', { fieldErrors: { reason: ['Required'] } });
     const started = new Date(a.starts_at) <= input.now;
@@ -212,13 +233,13 @@ export async function transitionAssignment(db: Db, input: {
     await tx.query('UPDATE assignments SET status = $2, undone_at = CASE WHEN $3 THEN $4::timestamptz END, updated_at = now() WHERE id = $1', [a.id, input.to, !!input.undo, input.now]);
     await tx.query(
       'INSERT INTO assignment_status_history (assignment_id, actor_user_id, actor_kind, from_status, to_status, reason) VALUES ($1,$2,$3,$4,$5,$6)',
-      [a.id, input.actorUserId, input.actorKind, a.status, input.to, input.undo ? 'Undone within the undo window' : input.reason?.trim() ?? null]);
+      [a.id, input.actorUserId, input.actorKind, a.status, input.to, input.undo ? (input.reason?.trim() ? `Undone within the undo window: ${input.reason.trim()}` : 'Undone within the undo window') : input.reason?.trim() ?? null]);
     if (rule.cancels && a.shift_status === 'filled') {
       await tx.query(`UPDATE shifts SET status = 'open', updated_at = now() WHERE id = $1 AND status = 'filled'`, [a.shift_id]);
     }
     await audit(tx, {
       actorUserId: input.actorUserId, action: input.undo ? 'assignment.undone' : `assignment.status.${input.to}`, targetType: 'assignment', targetId: a.id,
-      organizationId: a.organization_id, requestId: input.requestId, metadata: { from: a.status, to: input.to },
+      organizationId: a.organization_id, requestId: input.requestId, metadata: { from: a.status, to: input.to, ...(input.undo ? { undosInLast30DaysBefore: undosLately } : {}) },
     });
     return { id: a.id, status: input.to, previousStatus: a.status, organizationId: a.organization_id, professionalId: a.professional_id, shiftId: a.shift_id, jobTitle: a.title };
   });

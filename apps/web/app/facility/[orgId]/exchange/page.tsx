@@ -7,7 +7,7 @@ import {
 import { useOrg } from '@/lib/org';
 
 interface RegionRow { id: string; name: string; states: string[]; participation: string | null; has_location: boolean }
-interface Regions { regions: RegionRow[]; terms: { version: string; text: string } }
+interface Regions { available: boolean; regions: RegionRow[]; terms: { version: string; text: string } }
 interface Shift { id: string; title: string; starts_at: string; ends_at: string; hourly_rate_cents: number | null; open_positions: number; city: string; state: string }
 interface Card_ {
   talentRef: string; profession: string; specialties: string[]; city: string | null; state: string | null; yearsExperience: number;
@@ -143,6 +143,7 @@ export default function ExchangePage() {
       {!approved && <Alert tone="info">Your organization must be approved before it can use the exchange.</Alert>}
       <QueryBoundary state={regions}>
         {(d) => {
+          if (!d.available) return <Alert tone="warning" title="Not open yet">The regional exchange is not available yet. It opens once BSM has completed its legal review. You will be able to join from this page then.</Alert>;
           const active = d.regions.filter((r) => r.participation === 'active');
           const current = regionId && active.some((r) => r.id === regionId) ? regionId : active[0]?.id ?? '';
           return (

@@ -154,3 +154,11 @@ Configuration: `SHIFT_RECOVERY_INTERVAL_MINUTES` (default 5; 0 disables the time
 
 ## Shift offers: details, one-tap accept, undo
 Professional, under `/professionals/me`: `GET /shift-offers` and `GET /shift-offers/:id` now include `location_name`, `address_line1`, `shift_notes`, `requirements[]`, `eligibility` (for open offers), and the linked `assignment_*` fields. `POST /shift-offers/:id/respond` `{response}` returns, on acceptance, `undoUntil` and `nextSteps`. `POST /assignments/:id/undo` takes back an acceptance made within 5 minutes (no reason; does not count against reliability).
+
+## Legal sign-off gate
+Staff, `/admin/legal-signoffs` (super admin, settings_manage): `GET /` lists each gated feature (`float_pool`, `shift_recovery`) with its state; `PUT /:feature` `{signedOff, reference?, note?}` records or revokes sign-off (a reference of at least 3 characters is required to sign off).
+
+While a feature is not signed off, its endpoints return 403 with `details: { code: "legal_signoff_required", feature }`. Responses include `available` where a screen needs to explain itself: `GET /professionals/me/float-pool`, `GET /organizations/:orgId/exchange/regions`, `GET /organizations/:orgId/shift-recovery/settings`.
+
+## Undo reasons
+`POST /professionals/me/assignments/:id/undo` takes an optional `{reason}`. After 3 undos in the last 30 days a reason is required (422, `fieldErrors.reason`). `GET /admin/users/:id` includes `professional.undoneLast30Days` and `undoneTotal`.

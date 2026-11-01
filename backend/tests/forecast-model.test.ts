@@ -8,7 +8,7 @@ describe('demand forecast model', () => {
   it('refuses to guess from too little history', () => {
     const short = forecastDemand(flat(MIN_WEEKS - 1, 5), 8);
     expect(short).toMatchObject({ status: 'insufficient_history' });
-    expect(short.status === 'insufficient_history' && short.reason).toMatch(/8 weeks/);
+    expect(short.status === 'insufficient_history' && short.reason).toMatch(/12 weeks/);
     const quiet = forecastDemand([...flat(MIN_WEEKS + 4, 0), 1, 2], 8);
     expect(quiet).toMatchObject({ status: 'insufficient_history' });
     expect(quiet.status === 'insufficient_history' && quiet.reason).toContain(`${3}`);
@@ -61,7 +61,7 @@ describe('demand forecast model', () => {
   });
 
   it('labels confidence by history length and how wrong it has been', () => {
-    expect(ok(forecastDemand(flat(9, 5), 4)).confidence).toBe('low'); // short history
+    expect(ok(forecastDemand(flat(MIN_WEEKS, 5), 4)).confidence).toBe('low'); // just enough history to forecast, not enough to trust
     expect(ok(forecastDemand(flat(30, 5), 4)).confidence).toBe('high');
     const wild = Array.from({ length: 30 }, (_, i) => (i % 2 ? 20 : 0));
     expect(ok(forecastDemand(wild, 4)).confidence).toBe('low'); // long but unpredictable

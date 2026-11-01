@@ -4,7 +4,8 @@
  * no hidden state: the same history always gives the same forecast. Seasonality is NOT modelled (most organizations have
  * less than a year of history), and the result says so.
  */
-export const MIN_WEEKS = 8;
+/** Twelve weeks: a quarter of history before the forecast speaks at all. Revisit once it has been checked against pilot data. */
+export const MIN_WEEKS = 12;
 export const MIN_TOTAL = 10;
 const LEVEL_WEEKS = 6;
 const Z_80 = 1.28; // an 80% range if errors are roughly normal: a guide, not a guarantee
@@ -95,7 +96,7 @@ export function forecastDemand(history: number[], horizon: number): ForecastResu
     return { week: h, mean: round1(m), low: round1(Math.max(0, m - width)), high: round1(m + width) };
   });
   const bt = backtest(history);
-  const confidence: Confidence = history.length < 12 || (bt.typicalErrorShare ?? 1) > 0.5 ? 'low' : history.length >= 26 && (bt.typicalErrorShare ?? 1) <= 0.25 ? 'high' : 'medium';
+  const confidence: Confidence = history.length < 16 || (bt.typicalErrorShare ?? 1) > 0.5 ? 'low' : history.length >= 26 && (bt.typicalErrorShare ?? 1) <= 0.25 ? 'high' : 'medium';
   return {
     status: 'ok', confidence, points, backtest: bt, weeksOfHistory: history.length,
     method: `Recency-weighted average of the last ${Math.min(LEVEL_WEEKS, history.length)} weeks with a damped recent trend. Seasonality is not modelled.`,

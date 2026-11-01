@@ -4,16 +4,21 @@ import { Alert, AssignmentStatusBadge, Badge, Button, Card, ConfirmButton, DataT
 
 interface Requirement { kind: string; credential_type: string | null; jurisdiction: string | null; description: string | null; mandatory: boolean }
 interface Offer {
-  id: string; status: string; title: string; organization_name: string; city: string; state: string; location_name: string; address_line1: string;
+  id: string; status: string; title: string; organization_name: string; city: string; state: string; location_name: string; address_line1: string; timezone: string;
   starts_at: string; ends_at: string; hourly_rate_cents: number; message: string | null; shift_notes: string | null; expires_at: string;
   requirements: Requirement[]; eligibility: { outcome: string; reasons: { code: string; message: string }[] } | null;
-  assignment_id: string | null; assignment_status: string | null; assignment_created_at: string | null;
+  assignment_id: string | null; assignment_status: string | null; assignment_created_at: string | null; assignment_undone_at: string | null;
 }
-interface Assignment { id: string; status: string; title: string; organization_name: string; city: string; state: string; starts_at: string; ends_at: string; hourly_rate_cents: number }
+interface Assignment { id: string; status: string; title: string; organization_name: string; city: string; state: string; starts_at: string; ends_at: string; hourly_rate_cents: number; timezone: string }
 interface Accepted { assignmentId: string; undoUntil: string; nextSteps: string[] }
 
 const money = (cents: number) => `$${(cents / 100).toFixed(2)}/hr`;
-const when = (a: { starts_at: string; ends_at: string }) => `${formatDateTime(a.starts_at)} – ${formatDateTime(a.ends_at)}`;
+/** A shift is worked where the facility is, so show its times there, with the zone named (not in the viewer's own zone). */
+const shiftWhen = (a: { starts_at: string; ends_at: string; timezone: string }) => {
+  const day = (v: string) => new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeZone: a.timezone }).format(new Date(v));
+  const clock = new Intl.DateTimeFormat(undefined, { timeStyle: 'short', timeZone: a.timezone }).format(new Date(a.ends_at));
+  return day(a.starts_at) === day(a.ends_at) ? `${formatDateTime(a.starts_at, a.timezone)} – ${clock}` : `${formatDateTime(a.starts_at, a.timezone)} – ${formatDateTime(a.ends_at, a.timezone)}`;
+};
 const requirementText = (r: Requirement) => (r.kind === 'other' ? r.description : `${titleCase(r.kind)}: ${r.credential_type}${r.jurisdiction ? ` (${r.jurisdiction})` : ''}`);
 
 /** Seconds left until `iso`, ticking once a second while the window is open. */
@@ -34,12 +39,15 @@ const clock = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2,
 function Booked({ assignmentId, undoUntil, nextSteps, reload }: { assignmentId: string; undoUntil: string; nextSteps?: string[]; reload: () => Promise<void> }) {
   const client = useClient();
   const left = useCountdown(undoUntil);
-  const undo = useAction(async () => { await client.post(`/professionals/me/assignments/${assignmentId}/undo`); await reload(); });
+  const [reason, setReason] = useState('');
+  const undo = useAction(async () => { await client.post(`/professionals/me/assignments/${assignmentId}/undo`, reason.trim() ? { reason: reason.trim() } : {}); await reload(); });
+  const needsReason = !!undo.error?.fieldErrors?.reason;
   return (
     <Alert tone="success" title="Booked">
       {nextSteps && nextSteps.length > 0 && <ul style={{ margin: '4px 0', paddingLeft: 20 }}>{nextSteps.map((s) => <li key={s}>{s}</li>)}</ul>}
-      <ErrorAlert error={undo.error} />
-      {left > 0 && <Button tone="secondary" className="large" pending={undo.pending} onClick={() => void undo.run()}>Undo ({clock(left)} left)</Button>}
+      {needsReason && <><p className="small">{undo.error?.message}</p><TextField label="Why are you undoing this booking?" name="reason" value={reason} onChange={setReason} maxLength={1000} /></>}
+      {!needsReason && <ErrorAlert error={undo.error} />}
+      {left > 0 && <Button tone="secondary" className="large" pending={undo.pending} disabled={needsReason && reason.trim().length < 3} onClick={() => void undo.run()}>Undo ({clock(left)} left)</Button>}
     </Alert>
   );
 }
@@ -53,16 +61,17 @@ function OfferCard({ o, reload }: { o: Offer; reload: () => Promise<void> }) {
     await reload();
   });
   const open = o.status === 'sent';
+  const cancelled = o.status === 'accepted' && !!o.assignment_status && o.assignment_status.startsWith('cancelled');
   const eligible = o.eligibility?.outcome === 'eligible';
   // An accepted offer keeps its undo option until the window closes, even after the page is reloaded.
   const recentUndo = o.status === 'accepted' && o.assignment_status === 'confirmed' && o.assignment_id && o.assignment_created_at ? new Date(new Date(o.assignment_created_at).getTime() + 5 * 60_000).toISOString() : null;
   const mandatory = o.requirements.filter((r) => r.mandatory);
   const preferred = o.requirements.filter((r) => !r.mandatory);
   return (
-    <Card title={o.title} actions={<ShiftOfferStatusBadge status={o.status} />}>
+    <Card title={o.title} actions={cancelled ? <Badge tone="neutral">Booking cancelled</Badge> : <ShiftOfferStatusBadge status={o.status} />}>
       <p style={{ margin: '0 0 4px' }}><strong>{o.organization_name}</strong></p>
       <p className="muted" style={{ margin: '0 0 8px' }}>{o.location_name} · {o.address_line1}, {o.city}, {o.state}</p>
-      <p style={{ fontSize: '1.1rem', margin: '0 0 4px' }}>{when(o)}</p>
+      <p style={{ fontSize: '1.1rem', margin: '0 0 4px' }}>{shiftWhen(o)}</p>
       <p style={{ fontSize: '1.25rem', margin: '0 0 8px' }}><strong>{money(o.hourly_rate_cents)}</strong></p>
       {(o.message || o.shift_notes) && (
         <div style={{ margin: '8px 0' }}>
@@ -87,7 +96,10 @@ function OfferCard({ o, reload }: { o: Offer; reload: () => Promise<void> }) {
           <ConfirmButton label="Decline" message="Decline this shift offer?" pending={act.pending} onConfirm={() => act.run('declined')} />
         </div>
       )}
-      {accepted ? <Booked {...accepted} reload={reload} /> : recentUndo && o.assignment_id && <Booked assignmentId={o.assignment_id} undoUntil={recentUndo} reload={reload} />}
+      {cancelled
+        ? <Alert tone="info" title={o.assignment_undone_at ? 'Taken back' : 'Booking cancelled'}>{o.assignment_undone_at ? 'You undid this booking. The shift is open again for the facility to fill, and nothing is held against you.' : 'This booking was cancelled, so you are no longer scheduled for this shift.'}</Alert>
+        : accepted ? <Booked {...accepted} reload={reload} />
+        : recentUndo && o.assignment_id && <Booked assignmentId={o.assignment_id} undoUntil={recentUndo} reload={reload} />}
     </Card>
   );
 }
@@ -138,7 +150,7 @@ export function AssignmentsSection() {
             <DataTable caption="Your assignments" rows={d.assignments} rowKey={(a) => a.id}
               columns={[
                 { header: 'Shift', cell: (a) => `${a.title} · ${a.organization_name}, ${a.city}, ${a.state}` },
-                { header: 'When', cell: when }, { header: 'Rate', cell: (a) => money(a.hourly_rate_cents) },
+                { header: 'When', cell: shiftWhen }, { header: 'Rate', cell: (a) => money(a.hourly_rate_cents) },
                 { header: 'Status', cell: (a) => <AssignmentStatusBadge status={a.status} /> },
                 { header: 'Actions', cell: (a) => <CancelAssignment a={a} reload={list.reload} /> },
               ]} />

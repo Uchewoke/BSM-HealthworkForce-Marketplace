@@ -33,12 +33,13 @@ const facilityAssignmentBody = z.object({
   reason: z.string().trim().min(3).max(2000).optional(),
 });
 const professionalCancelBody = z.object({ reason: z.string().trim().min(3).max(2000) });
+const undoBody = z.object({ reason: z.string().trim().min(3).max(1000).optional() }).optional();
 
 const OFFER_COLS = `o.id, o.status, o.hourly_rate_cents, o.message, o.expires_at, o.responded_at, o.created_at, o.application_id, o.shift_id,
-  s.starts_at, s.ends_at, j.id AS job_id, j.title, l.city, l.state`;
+  s.starts_at, s.ends_at, j.id AS job_id, j.title, l.city, l.state, l.timezone`;
 const OFFER_FROM = `shift_offers o JOIN shifts s ON s.id = o.shift_id JOIN jobs j ON j.id = s.job_id JOIN facility_locations l ON l.id = j.location_id`;
 const ASSIGNMENT_COLS = `a.id, a.status, a.hourly_rate_cents, a.created_at, a.updated_at, a.shift_id,
-  s.starts_at, s.ends_at, j.id AS job_id, j.title, l.city, l.state`;
+  s.starts_at, s.ends_at, j.id AS job_id, j.title, l.city, l.state, l.timezone`;
 const ASSIGNMENT_FROM = `assignments a JOIN shifts s ON s.id = a.shift_id JOIN jobs j ON j.id = s.job_id JOIN facility_locations l ON l.id = j.location_id`;
 
 /** Facility side, mounted at /organizations/:orgId. Every query is scoped by organization_id. */
@@ -172,7 +173,7 @@ export function shiftOfferProfessionalRoutes(deps: AppDeps) {
     const [count] = await db.query<{ n: string }>(`SELECT count(*) AS n FROM shift_offers o WHERE ${where}`, args);
     const rows = await db.query(
       `SELECT ${OFFER_COLS}, s.notes AS shift_notes, l.name AS location_name, l.address_line1, org.name AS organization_name,
-              asg.id AS assignment_id, asg.status AS assignment_status, asg.created_at AS assignment_created_at
+              asg.id AS assignment_id, asg.status AS assignment_status, asg.created_at AS assignment_created_at, asg.undone_at AS assignment_undone_at
          FROM ${OFFER_FROM} JOIN organizations org ON org.id = o.organization_id LEFT JOIN assignments asg ON asg.offer_id = o.id
         WHERE ${where} ORDER BY o.created_at DESC, o.id LIMIT $${args.length + 1} OFFSET $${args.length + 2}`, [...args, q.pageSize, (q.page - 1) * q.pageSize]);
     res.json({ offers: await withDecisionDetails(rows as any[], p.id), undoWindowMinutes: UNDO_WINDOW_MINUTES, page: q.page, pageSize: q.pageSize, total: Number(count?.n ?? 0) });
@@ -216,11 +217,11 @@ export function shiftOfferProfessionalRoutes(deps: AppDeps) {
   });
 
   /** Takes back an acceptance made within the undo window. It does not count against reliability. */
-  r.post('/assignments/:id/undo', validate({ params: idParams }), async (req, res) => {
+  r.post('/assignments/:id/undo', validate({ params: idParams, body: undoBody }), async (req, res) => {
     const p = await me(req);
     const out = await transitionAssignment(db, {
       assignmentId: param(req, 'id'), actorKind: 'professional', actorUserId: req.auth!.userId, professionalId: p.id,
-      to: 'cancelled_by_professional', requestId: req.requestId, now: now(), undo: true,
+      to: 'cancelled_by_professional', reason: (req.body as z.infer<typeof undoBody>)?.reason, requestId: req.requestId, now: now(), undo: true,
     });
     await notifyUsers(deps, await orgUserIdsWithPermission(db, out.organizationId, 'applications.manage'), {
       category: 'application_updates', type: 'assignment.undone', title: `Shift reopened: ${out.jobTitle}`,

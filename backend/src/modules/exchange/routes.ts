@@ -6,6 +6,7 @@ import type { AppDeps } from '../../shared/deps.js';
 import { AppError } from '../../shared/errors.js';
 import { RateLimiter } from '../../shared/rate-limit.js';
 import { audit } from '../audit/service.js';
+import { isSignedOff, requireSignedOff } from '../legal/service.js';
 import { evaluateMatch } from '../matching/loader.js';
 import { notifyUsers, orgUserIdsWithPermission } from '../notifications/service.js';
 import { loadProfessional } from '../professionals/service.js';
@@ -100,11 +101,12 @@ export function professionalExchangeRoutes(deps: AppDeps) {
     const regions = await db.query<{ id: string; name: string; states: string[]; joined: boolean }>(
       `SELECT r.id, r.name, r.states, EXISTS (SELECT 1 FROM float_pool_members m WHERE m.region_id = r.id AND m.professional_id = $1 AND m.status = 'active') AS joined
          FROM exchange_regions r WHERE r.active ORDER BY r.name`, [p.id]);
-    res.json({ regions, terms: { version: POOL_CONSENT_VERSION, text: POOL_CONSENT_TEXT } });
+    res.json({ available: await isSignedOff(db, 'float_pool'), regions, terms: { version: POOL_CONSENT_VERSION, text: POOL_CONSENT_TEXT } });
   });
 
   r.post('/join', validate({ body: joinBody }), async (req, res) => {
     const p = await loadProfessional(db, req.auth!.userId);
+    await requireSignedOff(db, 'float_pool');
     if (p.account_status !== 'active') throw new AppError('FORBIDDEN', 'Your professional account is restricted.');
     const [region] = await db.query('SELECT 1 FROM exchange_regions WHERE id = $1 AND active', [req.body.regionId]);
     if (!region) throw new AppError('NOT_FOUND', 'Resource not found.');
@@ -181,6 +183,7 @@ export function facilityExchangeRoutes(deps: AppDeps) {
   const search = [requireOrgPermission(deps, 'professionals.search'), requireApprovedOrg(deps)];
 
   async function requireParticipation(orgId: string, regionId: string) {
+    await requireSignedOff(db, 'float_pool');
     const [p] = await db.query('SELECT 1 FROM exchange_participants ep JOIN exchange_regions r ON r.id = ep.region_id WHERE ep.organization_id = $1 AND ep.region_id = $2 AND ep.status = $3 AND r.active', [orgId, regionId, 'active']);
     if (!p) throw new AppError('FORBIDDEN', 'Your organization does not participate in this region’s exchange.');
   }
@@ -191,11 +194,12 @@ export function facilityExchangeRoutes(deps: AppDeps) {
       `SELECT r.id, r.name, r.states, ep.status AS participation,
               EXISTS (SELECT 1 FROM facility_locations l WHERE l.organization_id = $1 AND l.active AND l.state = ANY(r.states)) AS has_location
          FROM exchange_regions r LEFT JOIN exchange_participants ep ON ep.region_id = r.id AND ep.organization_id = $1 WHERE r.active ORDER BY r.name`, [orgOf(req)]);
-    res.json({ regions: rows, terms: { version: EXCHANGE_TERMS_VERSION, text: EXCHANGE_TERMS_TEXT } });
+    res.json({ available: await isSignedOff(db, 'float_pool'), regions: rows, terms: { version: EXCHANGE_TERMS_VERSION, text: EXCHANGE_TERMS_TEXT } });
   });
 
   r.post('/participation', validate({ params: orgParams, body: participationBody }), requireOrgPermission(deps, 'org.update'), requireApprovedOrg(deps), async (req, res) => {
     const orgId = orgOf(req);
+    await requireSignedOff(db, 'float_pool');
     const [region] = await db.query<{ states: string[] }>('SELECT states FROM exchange_regions WHERE id = $1 AND active', [req.body.regionId]);
     if (!region) throw new AppError('NOT_FOUND', 'Resource not found.');
     const [loc] = await db.query('SELECT 1 FROM facility_locations WHERE organization_id = $1 AND active AND state = ANY($2::text[])', [orgId, region.states]);

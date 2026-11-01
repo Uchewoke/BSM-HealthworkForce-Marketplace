@@ -105,7 +105,10 @@ describe('regional float pool', () => {
   let regionId: string, otherRegionId: string, pro3: S;
   let ref1: string, ref2: string, requestId: string;
 
-  beforeAll(async () => { pro3 = await makePro('pro3@example.com', true); });
+  beforeAll(async () => {
+    await ctx.db.query(`UPDATE legal_signoffs SET signed_off = true, reference = 'test review', signed_off_at = now()`); // these features stay off until legal sign-off is recorded
+    pro3 = await makePro('pro3@example.com', true);
+  });
 
   it('lets only marketplace staff create and manage regions', async () => {
     expect((await adminX('/regions', finance).post({ name: 'Georgia', states: ['GA'] })).status).toBe(403);
@@ -270,6 +273,27 @@ describe('regional float pool', () => {
     expect((await ctx.db.query('SELECT 1 FROM applications WHERE professional_id = $1', [proIdThree])).length).toBe(0); // nothing created, so no identity revealed
     expect((await ex('/requests', recruiter).get()).body.requests.find((r: any) => r.id === sent.body.request.id).status).toBe('failed');
     await ctx.db.query(`UPDATE shifts SET status = 'open' WHERE id = $1`, [shiftId]);
+  });
+
+  it('leaves nothing behind when the booking fails part-way, so the facility never learns who the person is', async () => {
+    const proIdThree = await proId(pro3);
+    const sent = await ex('/requests', recruiter).post({ talentRef: await refOf(pro3), shiftId });
+    expect(sent.status).toBe(201);
+    // Make the last step of the booking (creating the assignment) fail AFTER the application and the offer were created.
+    await ctx.db.query(`CREATE OR REPLACE FUNCTION test_block_assignments() RETURNS trigger AS $$ BEGIN RAISE EXCEPTION 'simulated failure'; END; $$ LANGUAGE plpgsql`);
+    await ctx.db.query('CREATE TRIGGER test_block BEFORE INSERT ON assignments FOR EACH ROW EXECUTE FUNCTION test_block_assignments()');
+    try {
+      const res = await respond(pro3, sent.body.request.id, 'accepted');
+      expect(res.status).toBe(409);
+      expect((await ctx.db.query('SELECT 1 FROM applications WHERE professional_id = $1', [proIdThree])).length).toBe(0);
+      expect((await ctx.db.query('SELECT 1 FROM shift_offers WHERE professional_id = $1', [proIdThree])).length).toBe(0);
+      expect((await ctx.db.query(`SELECT 1 FROM assignments WHERE professional_id = $1`, [proIdThree])).length).toBe(0);
+      const [row] = await ctx.db.query<{ status: string; failure_reason: string; application_id: string | null }>('SELECT status, failure_reason, application_id FROM float_requests WHERE id = $1', [sent.body.request.id]);
+      expect(row).toMatchObject({ status: 'failed', application_id: null });
+      expect(row!.failure_reason).toMatch(/could not be booked/);
+    } finally {
+      await ctx.db.query('DROP TRIGGER test_block ON assignments');
+    }
   });
 
   it('expires unanswered requests', async () => {

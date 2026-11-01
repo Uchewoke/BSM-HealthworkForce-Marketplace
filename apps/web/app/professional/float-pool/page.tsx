@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Alert, Badge, Button, Card, CheckField, ConfirmButton, EmptyState, ErrorAlert, PageHeader, QueryBoundary, centsToDollars, formatDateTime, titleCase, useAction, useApi, useClient } from '@bsm/ui';
 
 interface Region { id: string; name: string; states: string[]; joined: boolean }
-interface Info { regions: Region[]; terms: { version: string; text: string } }
+interface Info { available: boolean; regions: Region[]; terms: { version: string; text: string } }
 interface Req { id: string; status: string; hourly_rate_cents: number; message: string | null; created_at: string; expires_at: string; failure_reason: string | null; title: string; organization_name: string; city: string; state: string; starts_at: string; ends_at: string }
 
 const TONE: Record<string, 'info' | 'success' | 'neutral' | 'warning'> = { pending: 'info', accepted: 'success', declined: 'neutral', withdrawn: 'neutral', expired: 'neutral', failed: 'warning' };
@@ -72,7 +72,7 @@ export default function FloatPoolPage() {
       </Card>
       <h2>Regions</h2>
       <QueryBoundary state={info}>
-        {(d) => d.regions.length === 0 ? <EmptyState title="No regions yet">BSM has not opened any regional pools yet.</EmptyState> : (
+        {(d) => !d.available ? <Alert tone="warning" title="Not open yet">The regional float pool is not available yet. It opens once BSM has completed its review. Nothing is shared about you until you choose to join.</Alert> : d.regions.length === 0 ? <EmptyState title="No regions yet">BSM has not opened any regional pools yet.</EmptyState> : (
           <ul style={{ listStyle: 'none', padding: 0 }}>{d.regions.map((r) => <li key={r.id}><RegionCard region={r} terms={d.terms} reload={reloadAll} /></li>)}</ul>
         )}
       </QueryBoundary>

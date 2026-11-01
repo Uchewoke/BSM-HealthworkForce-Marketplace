@@ -57,7 +57,7 @@ export function facilityTools(ctx: ToolContext, onDraft: (d: JobDraft) => void):
     },
     {
       name: 'get_demand_forecast',
-      description: 'A statistical forecast of how many staff positions the organization will need in each coming week, overall and for its busiest professions, with a low-high range, a confidence label, the method, and how accurate the method has been on recent weeks. Also shows positions already posted and an estimate of what may go unfilled. This is an estimate, not a promise: always give the range and the confidence, and say when the status is insufficient_history.',
+      description: 'A statistical forecast of how many staff positions the organization will need in each coming week, overall and for its busiest professions, with a low-high range, a confidence label, the method, and how accurate the method has been on recent weeks. Also shows positions already posted and an estimate of what may go unfilled. This is an estimate, not a promise: always give the range and the confidence, and say when the status is insufficient_history. The forecast is a beta feature: say so.',
       inputSchema: OBJECT({ weeks: { type: 'integer', minimum: 4, maximum: 12, description: 'How many weeks ahead. Default 8.' } }),
       async run(input) {
         const { weeks } = horizonInput.parse(input ?? {});

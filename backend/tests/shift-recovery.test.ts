@@ -137,6 +137,7 @@ describe('unfilled shift recovery', () => {
   let s1: string;
 
   beforeAll(async () => {
+    await ctx.db.query(`UPDATE legal_signoffs SET signed_off = true, reference = 'test review', signed_off_at = now()`); // these features stay off until legal sign-off is recorded
     pro3 = await makePro('pro3@example.com', true);
     pro4 = await makePro('pro4@example.com', true);
     [p1, p2, p3, p4] = [await proId(pro1), await proId(pro2), await proId(pro3), await proId(pro4)];

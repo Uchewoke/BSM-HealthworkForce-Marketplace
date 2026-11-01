@@ -6,7 +6,9 @@ import type { AppDeps } from '../../shared/deps.js';
 import { AppError } from '../../shared/errors.js';
 import { RateLimiter } from '../../shared/rate-limit.js';
 import { audit } from '../audit/service.js';
-import { loadSettings, runShiftRecovery, startShiftRecovery, stopShiftRecovery } from './service.js';
+import { runRecoveryUnderLease } from './scheduler.js';
+import { isSignedOff, requireSignedOff } from '../legal/service.js';
+import { loadSettings, startShiftRecovery, stopShiftRecovery } from './service.js';
 
 const orgParams = z.object({ orgId: z.uuid() });
 const shiftParams = z.object({ orgId: z.uuid(), shiftId: z.uuid() });
@@ -35,6 +37,7 @@ export function shiftRecoveryRoutes(deps: AppDeps) {
       `SELECT u.full_name, (u.status = 'active' AND EXISTS (SELECT 1 FROM organization_members m WHERE m.organization_id = $2 AND m.user_id = u.id AND m.status = 'active')) AS active FROM users u WHERE u.id = $1`, [s.enabled_by, orgOf(req)]) : [];
     const [participates] = await db.query('SELECT 1 FROM exchange_participants WHERE organization_id = $1 AND status = $2', [orgOf(req), 'active']);
     res.json({
+      available: await isSignedOff(db, 'shift_recovery'),
       settings: { enabled: s.enabled, maxOutreach: s.max_outreach, offerHours: s.offer_hours, escalateHours: s.escalate_hours, minLeadHours: s.min_lead_hours, includeFloatPool: s.include_float_pool },
       enabledBy: who?.full_name ?? null,
       // Automatic offers are made on the approver's behalf; if they have left, recovery pauses until someone re-approves it.
@@ -45,6 +48,7 @@ export function shiftRecoveryRoutes(deps: AppDeps) {
 
   r.put('/settings', validate({ params: orgParams, body: settingsBody }), requireOrgPermission(deps, 'org.update'), requireApprovedOrg(deps), async (req, res) => {
     const b = req.body as z.infer<typeof settingsBody>;
+    if (b.enabled) await requireSignedOff(db, 'shift_recovery'); // switching it off is always allowed
     const before = await loadSettings(db, orgOf(req));
     const becomingEnabled = b.enabled && (!before.enabled || !before.enabled_by);
     await db.query(
@@ -83,10 +87,13 @@ export function shiftRecoveryRoutes(deps: AppDeps) {
 
   /** "Check now": runs recovery for this organization immediately instead of waiting for the next scheduled pass. */
   r.post('/run', validate({ params: orgParams }), manage, requireApprovedOrg(deps), async (req, res) => {
+    await requireSignedOff(db, 'shift_recovery');
     if (!runLimiter.allow(`recovery-run:${orgOf(req)}`)) throw new AppError('RATE_LIMITED', 'You have run this a lot in the last hour. It also runs automatically every few minutes.');
     const settings = await loadSettings(db, orgOf(req));
     if (!settings.enabled) throw new AppError('CONFLICT', 'Turn on unfilled-shift recovery in the settings first.');
-    res.json({ summary: await runShiftRecovery(deps, { now: now(), organizationId: orgOf(req), requestId: req.requestId }) });
+    const summary = await runRecoveryUnderLease(deps, { now: now(), organizationId: orgOf(req), requestId: req.requestId });
+    if (!summary) throw new AppError('CONFLICT', 'A check is already running. Try again in a moment.');
+    res.json({ summary });
   });
 
   return r;

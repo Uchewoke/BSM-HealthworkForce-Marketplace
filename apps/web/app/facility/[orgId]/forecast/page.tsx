@@ -48,16 +48,16 @@ export default function ForecastPage() {
   return (
     <>
       <ChartStyles />
-      <PageHeader title="Demand forecast" subtitle="How many staff positions you are likely to need in the coming weeks, based on your own shift history." />
-      <Alert tone="info" title="An estimate, not a promise">
-        This is a statistical projection from the shifts you have posted. It cannot know about new contracts, closures, seasonal surges or policy changes, and it does not model seasons. Use the range, not just the middle number, and plan around what you already know.
+      <PageHeader title="Demand forecast" subtitle={<>How many staff positions you are likely to need in the coming weeks, based on your own shift history. <Badge tone="warning">Beta</Badge></>} />
+      <Alert tone="info" title="Beta: an estimate, not a promise">
+        This is a statistical projection from the shifts you have posted, and it has not yet been checked against real results from facilities like yours. It cannot know about new contracts, closures, seasonal surges or policy changes, and it does not model seasons. Use the range, not just the middle number, and plan around what you already know.
       </Alert>
       <SelectField label="Look ahead" name="horizon" value={horizon} onChange={setHorizon} options={[{ value: '4', label: '4 weeks' }, { value: '8', label: '8 weeks' }, { value: '12', label: '12 weeks' }]} />
       <QueryBoundary state={state}>
         {(d) => {
           const o = d.overall;
           if (o.status !== 'ok') {
-            return <Alert tone="warning" title="Not enough history to forecast yet">{o.reason} Forecasts appear once you have posted shifts over a couple of months. The longer the history, the better the forecast.</Alert>;
+            return <Alert tone="warning" title="Not enough history to forecast yet">{o.reason} Forecasts appear once you have at least 12 weeks of posted shifts. The longer the history, the better the forecast.</Alert>;
           }
           const bars: ForecastBar[] = [
             ...o.history.slice(-26).map((h) => ({ week: h.week, past: h.positions })),

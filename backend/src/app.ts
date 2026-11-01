@@ -7,6 +7,7 @@ import { adminRoutes } from './modules/admin/routes.js';
 import { authRoutes } from './modules/auth/routes.js';
 import { adminBillingRoutes } from './modules/billing/routes.js';
 import { adminExchangeRoutes } from './modules/exchange/routes.js';
+import { adminLegalRoutes } from './modules/legal/routes.js';
 import { adminReviewRoutes } from './modules/reviews/routes.js';
 import { adminOperationsRoutes } from './modules/admin/operations.js';
 import { adminSettingsRoutes } from './modules/admin/settings.js';
@@ -61,6 +62,7 @@ export function createApp(deps: AppDeps) {
   v1.use('/admin/billing', adminBillingRoutes(deps, needAuth));
   v1.use('/admin/reviews', adminReviewRoutes(deps, needAuth));
   v1.use('/admin/exchange', adminExchangeRoutes(deps, needAuth));
+  v1.use('/admin/legal-signoffs', adminLegalRoutes(deps, needAuth));
   v1.use('/admin', adminCredentialRoutes(deps, needAuth));
   v1.use('/admin', adminRoutes(deps, needAuth)); // defines /users/lookup, which must precede /users/:id below
   v1.use('/admin', adminOperationsRoutes(deps, needAuth, metrics));

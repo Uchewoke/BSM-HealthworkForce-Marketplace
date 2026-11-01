@@ -116,9 +116,11 @@ export function adminOperationsRoutes(deps: AppDeps, needAuth: RequestHandler, m
          FROM organization_members m JOIN organizations o ON o.id = m.organization_id WHERE m.user_id = $1 ORDER BY m.created_at`, [id]);
     const [professional] = await db.query(
       `SELECT p.id, p.account_status, pr.name AS profession FROM professionals p JOIN professions pr ON pr.id = p.profession_id WHERE p.user_id = $1`, [id]);
+    const booking = professional ? (await db.query<{ undone_30d: string; undone_total: string }>(
+      `SELECT count(*) FILTER (WHERE undone_at > now() - interval '30 days') AS undone_30d, count(*) FILTER (WHERE undone_at IS NOT NULL) AS undone_total FROM assignments WHERE professional_id = $1`, [(professional as { id: string }).id]))[0] : null;
     const activeSessions = await count(db, 'SELECT count(*) AS n FROM sessions WHERE user_id = $1 AND revoked_at IS NULL AND expires_at > now()', [id]);
     await audit(db, { actorUserId: req.auth!.userId, action: 'admin.user_viewed', targetType: 'user', targetId: id, requestId: req.requestId });
-    res.json({ user, memberships, professional: professional ?? null, activeSessions });
+    res.json({ user, memberships, professional: professional ? { ...(professional as object), undoneLast30Days: Number(booking?.undone_30d ?? 0), undoneTotal: Number(booking?.undone_total ?? 0) } : null, activeSessions });
   });
 
   r.post('/users/:id/status', validate({ params: idParams, body: userStatusBody }), requirePlatformPermission('admin.user_manage'), async (req, res) => {

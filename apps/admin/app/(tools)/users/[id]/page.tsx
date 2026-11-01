@@ -8,7 +8,7 @@ import { Alert, Badge, Card, ConfirmButton, DataTable, DefinitionList, ErrorAler
 interface Detail {
   user: { id: string; email: string; full_name: string; status: string; platform_role: string | null; email_verified_at: string | null; failed_login_count: number; locked_until: string | null; created_at: string };
   memberships: { id: string; role: string; status: string; organization_id: string; organization_name: string; organization_status: string }[];
-  professional: null | { id: string; account_status: string; profession: string };
+  professional: null | { id: string; account_status: string; profession: string; undoneLast30Days: number; undoneTotal: number };
   activeSessions: number;
 }
 
@@ -47,7 +47,7 @@ export default function UserDetailPage() {
               ]} />
               <p className="small muted">Viewing this page is recorded in the audit log.</p>
             </Card>
-            <Card title="Professional profile">{d.professional ? <p>{d.professional.profession} · account {titleCase(d.professional.account_status)}</p> : <p className="muted">No professional profile.</p>}</Card>
+            <Card title="Professional profile">{d.professional ? <><p>{d.professional.profession} · account {titleCase(d.professional.account_status)}</p><p className="small muted">Bookings undone within the undo window: {d.professional.undoneLast30Days} in the last 30 days, {d.professional.undoneTotal} in total. After 3 in 30 days the person is asked for a reason each time.</p></> : <p className="muted">No professional profile.</p>}</Card>
             <Card title="Organizations">
               <DataTable caption="Memberships" rows={d.memberships} rowKey={(m) => m.id} empty={<p className="muted">Not a member of any organization.</p>}
                 columns={[

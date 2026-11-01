@@ -5,6 +5,7 @@ import { logger } from '../../shared/logger.js';
 import { audit } from '../audit/service.js';
 import { createShiftOffer, expireOffers } from '../applications/shift-offers-service.js';
 import { createFloatRequest, expireFloatRequests } from '../exchange/service.js';
+import { isSignedOff, requireSignedOff } from '../legal/service.js';
 import { evaluateMatch } from '../matching/loader.js';
 import { notifyUsers, orgUserIdsWithPermission } from '../notifications/service.js';
 
@@ -30,7 +31,7 @@ interface Candidate { professionalId: string; applicationId: string | null; scor
 interface Pool { eligible: Candidate[]; pendingVerification: number; unavailable: number; ineligible: number; poolEligible: number }
 
 /** Who could still be asked: eligible applicants first, then (if allowed) opted-in pool members, each best-ranked first. */
-async function findCandidates(db: Db, org: { id: string; settings: RecoverySettings }, shift: ShiftRow, already: Set<string>, now: Date): Promise<Pool> {
+async function findCandidates(db: Db, org: { id: string; settings: RecoverySettings; poolAllowed: boolean }, shift: ShiftRow, already: Set<string>, now: Date): Promise<Pool> {
   const result: Pool = { eligible: [], pendingVerification: 0, unavailable: 0, ineligible: 0, poolEligible: 0 };
   const tally = (outcome: string) => {
     if (outcome === 'pending_verification' || outcome === 'needs_review') result.pendingVerification++;
@@ -50,7 +51,7 @@ async function findCandidates(db: Db, org: { id: string; settings: RecoverySetti
     else tally(m.eligibility.outcome);
   }
   const fromPool: Candidate[] = [];
-  if (org.settings.include_float_pool) {
+  if (org.settings.include_float_pool && org.poolAllowed) {
     const members = await db.query<{ professional_id: string }>(
       `SELECT DISTINCT m.professional_id FROM float_pool_members m JOIN exchange_regions r ON r.id = m.region_id AND r.active
          JOIN exchange_participants ep ON ep.region_id = r.id AND ep.organization_id = $1 AND ep.status = 'active'
@@ -72,7 +73,7 @@ async function findCandidates(db: Db, org: { id: string; settings: RecoverySetti
 const hoursText = (h: number) => (h < 48 ? `${Math.max(0, Math.round(h))} hours` : `${Math.round(h / 24)} days`);
 
 /** What the facility could do about a shortage, based only on facts we know. Suggestions, not instructions. */
-async function nextSteps(db: Db, org: { id: string; settings: RecoverySettings }, shift: ShiftRow, c: Pool, reasons: { noRate: boolean; tooLate: boolean; capReached: boolean }, hours: number) {
+async function nextSteps(db: Db, org: { id: string; settings: RecoverySettings; poolAllowed: boolean }, shift: ShiftRow, c: Pool, reasons: { noRate: boolean; tooLate: boolean; capReached: boolean }, hours: number) {
   const steps: string[] = [];
   if (reasons.noRate) steps.push('Set an hourly rate on the shift so offers can be sent.');
   if (reasons.tooLate) steps.push('The shift starts very soon: contact professionals you already know directly.');
@@ -91,7 +92,7 @@ async function nextSteps(db: Db, org: { id: string; settings: RecoverySettings }
   return steps;
 }
 
-async function processShift(deps: Pick<CoreDeps, 'db' | 'email'>, org: { id: string; settings: RecoverySettings; name: string }, shift: ShiftRow, now: Date, requestId: string, sum: RunSummary) {
+async function processShift(deps: Pick<CoreDeps, 'db' | 'email'>, org: { id: string; settings: RecoverySettings; name: string; poolAllowed: boolean }, shift: ShiftRow, now: Date, requestId: string, sum: RunSummary) {
   const { db } = deps;
   const [taken] = await db.query<{ n: string }>(`SELECT count(*) AS n FROM assignments WHERE shift_id = $1 AND status IN ('confirmed','completed')`, [shift.id]);
   const open = shift.positions - Number(taken?.n ?? 0);
@@ -199,6 +200,9 @@ export async function runShiftRecovery(deps: Pick<CoreDeps, 'db' | 'email'>, opt
   const requestId = opts.requestId ?? 'shift-recovery';
   await expireOffers(db, opts.now);
   await expireFloatRequests(db, opts.now);
+  // Automatic outreach only runs while legal sign-off is recorded. Without it, nothing is sent, whatever an organization has switched on.
+  if (!(await isSignedOff(db, 'shift_recovery'))) return sum;
+  const poolAllowed = await isSignedOff(db, 'float_pool');
   const orgs = await db.query<RecoverySettings & { organization_id: string; name: string }>(
     `SELECT s.organization_id, o.name, s.enabled, s.max_outreach, s.offer_hours, s.escalate_hours, s.min_lead_hours, s.include_float_pool, s.enabled_by
        FROM shift_recovery_settings s JOIN organizations o ON o.id = s.organization_id AND o.status = 'approved'
@@ -206,7 +210,7 @@ export async function runShiftRecovery(deps: Pick<CoreDeps, 'db' | 'email'>, opt
         AND EXISTS (SELECT 1 FROM organization_members m JOIN users u ON u.id = m.user_id WHERE m.organization_id = s.organization_id AND m.user_id = s.enabled_by AND m.status = 'active' AND u.status = 'active')`, [opts.organizationId ?? null]);
   for (const o of orgs) {
     sum.organizations++;
-    const org = { id: o.organization_id, name: o.name, settings: o as RecoverySettings };
+    const org = { id: o.organization_id, name: o.name, settings: o as RecoverySettings, poolAllowed };
     const shifts = await db.query<ShiftRow>(
       `SELECT s.id, s.job_id, s.positions, s.starts_at, s.hourly_rate_cents, j.title, l.state FROM shifts s JOIN jobs j ON j.id = s.job_id JOIN facility_locations l ON l.id = j.location_id
         WHERE s.organization_id = $1 AND s.status = 'open' AND s.starts_at > $2 AND j.status IN ('published','paused') ORDER BY s.starts_at LIMIT ${MAX_SHIFTS_PER_ORG}`, [org.id, opts.now]);
@@ -222,6 +226,7 @@ export async function runShiftRecovery(deps: Pick<CoreDeps, 'db' | 'email'>, opt
 
 /** Starts (or restarts) recovery for one shift by hand, even if no outreach has failed yet. */
 export async function startShiftRecovery(db: Db, input: { organizationId: string; shiftId: string; userId: string; requestId: string }) {
+  await requireSignedOff(db, 'shift_recovery');
   const settings = await loadSettings(db, input.organizationId);
   if (!settings.enabled) throw new AppError('CONFLICT', 'Turn on unfilled-shift recovery in the settings first.');
   const [shift] = await db.query('SELECT 1 FROM shifts s JOIN jobs j ON j.id = s.job_id WHERE s.id = $1 AND s.organization_id = $2 AND s.status = $3 AND s.starts_at > now() AND j.status IN (\'published\',\'paused\')', [input.shiftId, input.organizationId, 'open']);

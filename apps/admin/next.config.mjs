@@ -9,6 +9,8 @@ const apiOrigin = new URL(api).origin;
 /** @type {import('next').NextConfig} */
 export default {
   reactStrictMode: true,
+  // Lets a second copy of the app be built beside the normal one (for example to test against another API) without sharing .next. (Next rewrites tsconfig.json and next-env.d.ts for the extra folder: discard those changes afterwards.)
+  distDir: process.env.NEXT_DIST_DIR || '.next',
   outputFileTracingRoot: root,
   poweredByHeader: false,
   transpilePackages: ['@bsm/ui', '@bsm/api-client', '@bsm/permissions'],

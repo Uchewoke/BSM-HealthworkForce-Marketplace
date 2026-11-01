@@ -238,7 +238,7 @@ export interface Column<T> { header: string; cell: (row: T) => ReactNode }
 export function DataTable<T>({ caption, columns, rows, rowKey, empty }: { caption: string; columns: Column<T>[]; rows: T[]; rowKey: (r: T) => string; empty?: ReactNode }) {
   if (!rows.length) return <>{empty ?? <EmptyState title="Nothing to show yet" />}</>;
   return (
-    <div className="table-wrap">
+    <div className="table-wrap" role="region" aria-label={caption} tabIndex={0}>
       <table>
         <caption className="visually-hidden">{caption}</caption>
         <thead><tr>{columns.map((c) => <th key={c.header} scope="col">{c.header}</th>)}</tr></thead>
@@ -265,7 +265,12 @@ export function Pagination({ page, pageSize, total, onPage }: { page: number; pa
 export const formatDate = (v: string | Date | null | undefined) => (v ? new Date(v).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' }) : '—');
 export function formatDateTime(v: string | Date | null | undefined, timeZone?: string) {
   if (!v) return '—';
-  return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short', timeZone, timeZoneName: timeZone ? 'short' : undefined }).format(new Date(v));
+  const d = new Date(v);
+  const text = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short', timeZone }).format(d);
+  if (!timeZone) return text;
+  // dateStyle/timeStyle cannot be combined with timeZoneName (browsers throw), so the zone abbreviation is formatted separately.
+  const zone = new Intl.DateTimeFormat(undefined, { timeZone, timeZoneName: 'short' }).formatToParts(d).find((p) => p.type === 'timeZoneName')?.value;
+  return zone ? `${text} ${zone}` : text;
 }
 export function formatPay(unit: string | null, min: number | null, max: number | null) {
   if (min == null && max == null) return 'Not stated';

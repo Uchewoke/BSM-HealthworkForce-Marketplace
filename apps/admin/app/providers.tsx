@@ -17,6 +17,7 @@ const TOOLS: (NavItem & { permission?: Permission })[] = [
   { href: '/support', label: 'Support', permission: 'admin.support' },
   { href: '/audit', label: 'Audit log', permission: 'admin.audit_read' },
   { href: '/settings', label: 'Configuration', permission: 'admin.taxonomy_manage' },
+  { href: '/legal', label: 'Legal sign-off', permission: 'admin.settings_manage' },
 ];
 
 function Shell({ children }: { children: ReactNode }) {

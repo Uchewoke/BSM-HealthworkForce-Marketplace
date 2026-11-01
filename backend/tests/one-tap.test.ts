@@ -186,4 +186,26 @@ describe('shift offers: decide with full details, accept in one tap, undo within
     expect(res.status).toBe(409);
     expect(res.body.error.message).toMatch(/already started/);
   });
+
+  it('asks for a reason once someone has undone three bookings in 30 days, and staff can see the pattern', async () => {
+    const pid = await proId(pro1);
+    // One undo already happened in this file. Mark two more as undone earlier this month.
+    await ctx.db.query(`UPDATE assignments SET undone_at = now() - interval '2 days' WHERE professional_id = $1 AND undone_at IS NULL`, [pid]);
+    const s2 = await extraShift(28);
+    await ctx.db.query('INSERT INTO application_shifts (application_id, shift_id, organization_id) VALUES ($1,$2,$3)', [appId, s2, orgA]);
+    const o = await api().post(`${orgUrl()}/applications/${appId}/shift-offers`).set('Cookie', recruiter.cookie).send({ shiftId: s2 });
+    const asg = (await answer(pro1, o.body.offer.id, 'accepted')).body.assignmentId as string;
+    const refused = await undo(pro1, asg);
+    expect(refused.status).toBe(422);
+    expect(refused.body.error.details.fieldErrors.reason).toBeDefined();
+    expect(refused.body.error.message).toMatch(/undone 3 bookings/);
+    expect((await ctx.db.query<{ status: string }>('SELECT status FROM assignments WHERE id = $1', [asg]))[0]!.status).toBe('confirmed'); // nothing happened
+    const ok = await api().post(`${base}/assignments/${asg}/undo`).set('Cookie', pro1.cookie).send({ reason: 'Double-booked myself by mistake' });
+    expect(ok.status).toBe(200);
+    const [h] = await ctx.db.query<{ reason: string }>(`SELECT reason FROM assignment_status_history WHERE assignment_id = $1 AND to_status = 'cancelled_by_professional'`, [asg]);
+    expect(h!.reason).toContain('Double-booked myself by mistake');
+    const staff = await api().get(`/api/v1/admin/users/${pro1.id}`).set('Cookie', platformAdmin.cookie);
+    expect(staff.body.professional.undoneLast30Days).toBeGreaterThanOrEqual(4);
+    expect(staff.body.professional.undoneTotal).toBeGreaterThanOrEqual(4);
+  });
 });

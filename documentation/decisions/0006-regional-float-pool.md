@@ -43,3 +43,9 @@ Regions are named sets of US states, created and edited by staff (`admin.marketp
 - The consent and exchange-terms wording are drafts without legal review.
 - Forecasts ignore seasonality, holidays, and events, and treat all history as equally relevant. A new facility's first weeks are unrepresentative.
 - A professional who accepts through the pool is the facility's responsibility to onboard; the platform does not vet the facility's fitness beyond approval.
+
+## Update: legal gate, all-or-nothing booking, Beta forecast
+- The pool is gated by a recorded legal sign-off (see `legal_signoffs`, Admin > Legal sign-off). It is off in a fresh install and for everyone until a super admin records the sign-off. The briefing for counsel is `documentation/compliance/counsel-review-brief.md`.
+- Booking on acceptance is now one transaction: the application, the offer and the acceptance either all happen or none do. The earlier cleanup-after-failure approach (and its brief identity exposure) is gone.
+- Regions stay state-level for the pilot (product owner).
+- The forecast is labelled Beta and needs 12 weeks of history (was 8); confidence is "low" below 16 weeks.

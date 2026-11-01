@@ -4,7 +4,7 @@ import { Alert, Badge, Button, Card, CheckField, ConfirmButton, EmptyState, Erro
 import { useOrg } from '@/lib/org';
 
 interface Settings { enabled: boolean; maxOutreach: number; offerHours: number; escalateHours: number; minLeadHours: number; includeFloatPool: boolean }
-interface SettingsResponse { settings: Settings; enabledBy: string | null; approverActive: boolean | null; participatesInExchange: boolean }
+interface SettingsResponse { available: boolean; settings: Settings; enabledBy: string | null; approverActive: boolean | null; participatesInExchange: boolean }
 interface Escalation {
   openPositions: number; positions: number; hoursToStart: number; liveOutreach: number;
   outreach: { offers: number; floatRequests: number; declined: number; expired: number };
@@ -24,20 +24,21 @@ function SettingsCard({ orgId, data, reload }: { orgId: string; data: SettingsRe
   useEffect(() => setS(data.settings), [data.settings]);
   const num = (k: keyof Settings) => (v: string) => { setSaved(false); setS({ ...s, [k]: Number(v) }); };
   const save = useAction(async () => { await client.put(`/organizations/${orgId}/shift-recovery/settings`, s); setSaved(true); await reload(); });
-  const editable = can('org.update') && approved;
+  const editable = can('org.update') && approved && data.available;
   return (
     <Card title="Settings">
       <Alert tone="info" title="What this does">
         When an offer for a shift expires or is declined and the shift is still short, BSM keeps going on your behalf: it offers the shift to the next best <strong>eligible</strong> people, within the limits below, and tells you if it still cannot be filled.
         It never skips a requirement, only uses the rate already set on the shift, and each automatic offer is attributed to the person who switched this on.
       </Alert>
+      {!data.available && <Alert tone="warning" title="Not available yet">Automatic outreach opens once BSM has completed its legal review. Until then it cannot be switched on, and nothing is sent automatically. You can still send offers yourself.</Alert>}
       {data.settings.enabled && data.approverActive === false && <Alert tone="warning" title="Paused">The person who approved automatic offers ({data.enabledBy}) is no longer an active member. An owner or admin needs to turn this on again.</Alert>}
       {data.settings.enabled && data.approverActive && <p className="small muted">Switched on by {data.enabledBy}. Automatic offers are made on their behalf.</p>}
       <ErrorAlert error={save.error} />
       {saved && <Alert tone="success">Saved.</Alert>}
       <form onSubmit={(e) => { e.preventDefault(); setSaved(false); void save.run(); }} noValidate>
         <fieldset disabled={!editable} style={{ border: 0, padding: 0 }}>
-          <CheckField label="Keep trying to fill shifts automatically" name="enabled" checked={s.enabled} onChange={(v) => { setSaved(false); setS({ ...s, enabled: v }); }} hint="Off by default. Nothing is sent automatically until you turn this on." />
+          <CheckField label="Keep trying to fill shifts automatically" name="enabled" checked={s.enabled && data.available} onChange={(v) => { setSaved(false); setS({ ...s, enabled: v }); }} hint="Off by default. Nothing is sent automatically until you turn this on." />
           <div className="form-grid">
             <TextField label="Most automatic offers per shift" name="maxOutreach" type="number" min={1} max={25} value={String(s.maxOutreach)} onChange={num('maxOutreach')} error={save.error} hint="A hard stop for each shift." />
             <TextField label="Each offer stays open for (hours)" name="offerHours" type="number" min={1} max={72} value={String(s.offerHours)} onChange={num('offerHours')} error={save.error} hint="Never longer than until the shift starts." />
@@ -69,7 +70,7 @@ function ShiftCard({ orgId, s, reload }: { orgId: string; s: RecoveryShift; relo
         <Alert tone="warning" title={`Still short ${e.hoursToStart < 48 ? `with ${Math.max(0, Math.round(e.hoursToStart))} hours to go` : ''}`.trim()}>
           {e.reasons.length > 0 && <p style={{ margin: '0 0 6px' }}>Why: {e.reasons.join('; ')}.</p>}
           <p className="small" style={{ margin: '0 0 6px' }}>
-            Asked {e.outreach.offers + e.outreach.floatRequests} people · {e.outreach.declined} declined · {e.outreach.expired} did not answer.
+            Asked {e.outreach.offers + e.outreach.floatRequests} {e.outreach.offers + e.outreach.floatRequests === 1 ? 'person' : 'people'} · {e.outreach.declined} declined · {e.outreach.expired} did not answer.
             {e.candidates.pendingVerification > 0 && <> {e.candidates.pendingVerification} waiting on credential review.</>}
             {e.candidates.unavailable > 0 && <> {e.candidates.unavailable} unavailable.</>}
           </p>
