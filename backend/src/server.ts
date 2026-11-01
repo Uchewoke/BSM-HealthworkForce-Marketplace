@@ -5,6 +5,7 @@ import { AnthropicAssistant } from './integrations/assistant.js';
 import { DevConsoleEmailSender } from './integrations/email.js';
 import { NotConfiguredScanner } from './integrations/malware.js';
 import { LocalFsStorage } from './integrations/storage.js';
+import { startShiftRecoveryScheduler } from './modules/shift-recovery/scheduler.js';
 import { logger } from './shared/logger.js';
 
 const config = loadConfig();
@@ -24,10 +25,16 @@ if (config.nodeEnv === 'production') {
 }
 
 const port = Number(process.env.PORT ?? 4000);
-createApp({
+const deps = {
   db, config, email: new DevConsoleEmailSender(config.webUrl, config.nodeEnv),
   storage: new LocalFsStorage(process.env.FILE_STORAGE_DIR ?? './.data/files'),
   assistant: AnthropicAssistant.fromEnv(), // NotConfiguredAssistant unless ANTHROPIC_API_KEY is set
   scanner: new NotConfiguredScanner(), // documents are stored with scan_status = 'not_scanned' until a scanner is configured
-})
+};
+createApp(deps)
   .listen(port, () => logger.info({ port }, 'api listening'));
+
+// Unfilled-shift recovery runs every few minutes (SHIFT_RECOVERY_INTERVAL_MINUTES; 0 turns the timer off). Organizations
+// only take part if they switched it on.
+const recoveryMinutes = Number(process.env.SHIFT_RECOVERY_INTERVAL_MINUTES ?? 5);
+if (recoveryMinutes > 0) startShiftRecoveryScheduler(deps, recoveryMinutes * 60_000);

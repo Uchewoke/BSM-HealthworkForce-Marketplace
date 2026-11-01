@@ -95,3 +95,11 @@ th { background: var(--neutral-bg); font-size: 0.875rem; }
 .hero h1 { font-size: 2.2rem; margin: 0 0 12px; }
 .confirm { border: 2px solid var(--danger); border-radius: var(--radius); padding: 12px; background: var(--danger-bg); }
 .confirm.neutral { border-color: var(--primary); background: var(--info-bg); }
+
+/* Larger touch targets for the actions people take on a phone, such as accepting a shift. */
+.btn.large { min-height: 48px; padding: 12px 20px; font-size: 1.05rem; }
+.actions-stack { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
+@media (max-width: 640px) {
+  .actions-stack { flex-direction: column; align-items: stretch; }
+  .actions-stack .btn { width: 100%; min-height: 48px; }
+}

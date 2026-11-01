@@ -94,8 +94,23 @@ function Requirements({ orgId, d, reload }: { orgId: string; d: Detail; reload: 
   );
 }
 
+/** Starts unfilled-shift recovery for one open shift of a published job. It needs recovery switched on in the settings. */
+function StartRecovery({ orgId, shiftId }: { orgId: string; shiftId: string }) {
+  const client = useClient();
+  const [started, setStarted] = useState(false);
+  const start = useAction(async () => { await client.post(`/organizations/${orgId}/shift-recovery/shifts/${shiftId}/start`); setStarted(true); });
+  if (started) return <span className="small"><Link href={`/facility/${orgId}/recovery`}>Started: see progress</Link></span>;
+  return (
+    <>
+      <ConfirmButton tone="primary" label="Keep trying to fill" message="Start automatic outreach for this shift? It will offer it to the next eligible people within the limits in your recovery settings." pending={start.pending} onConfirm={() => start.run()} />
+      {start.error && <p className="small" style={{ color: 'var(--danger)' }}>{start.error.message} {start.error.status === 409 && <Link href={`/facility/${orgId}/recovery`}>Open settings</Link>}</p>}
+    </>
+  );
+}
+
 function Shifts({ orgId, d, reload }: { orgId: string; d: Detail; reload: () => Promise<void> }) {
   const client = useClient();
+  const { can } = useOrg();
   const { locations } = useLocations(orgId);
   const tz = locations.find((l) => l.id === d.job.location_id)?.timezone ?? 'UTC';
   const editable = ['draft', 'published', 'paused'].includes(d.job.status ?? '');
@@ -120,6 +135,7 @@ function Shifts({ orgId, d, reload }: { orgId: string; d: Detail; reload: () => 
         columns={[
           { header: 'Starts', cell: (s) => formatDateTime(s.starts_at, tz) }, { header: 'Ends', cell: (s) => formatDateTime(s.ends_at, tz) }, { header: 'Needed', cell: (s) => s.positions },
           { header: 'Rate', cell: (s) => (s.hourly_rate_cents ? `$${(s.hourly_rate_cents / 100).toFixed(2)}/hr` : '—') }, { header: 'Status', cell: (s) => <Badge tone={s.status === 'open' ? 'success' : 'neutral'}>{titleCase(s.status)}</Badge> },
+          ...(d.job.status === 'published' && can('applications.manage') ? [{ header: 'Fill help', cell: (s: Shift) => (s.status === 'open' ? <StartRecovery orgId={orgId} shiftId={s.id} /> : '—') }] : []),
           { header: 'Actions', cell: (s) => s.status !== 'open' || !editable ? '—' : (
             <div className="row">
               {draft ? <ConfirmButton label="Delete" message="Delete this shift?" onConfirm={() => remove.run(s.id)} /> : <ConfirmButton label="Cancel shift" message="Cancel this shift? Applicants who selected it are not notified automatically." onConfirm={() => cancel.run(s.id)} />}

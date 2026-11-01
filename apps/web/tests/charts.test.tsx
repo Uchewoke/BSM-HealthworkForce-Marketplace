@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
 import { describe, expect, it } from 'vitest';
-import { BarList, ChartCard, ColumnChart, StatTile, money, percent } from '../components/Charts';
+import { BarList, ChartCard, ColumnChart, ForecastChart, StatTile, money, percent } from '../components/Charts';
 
 const trend = [
   { bucket: '2026-10-05', posted: 4, filled: 3 },
@@ -73,5 +73,30 @@ describe('charts', () => {
       </>,
     );
     expect(await axe(container)).toHaveNoViolations();
+  });
+});
+
+describe('forecast chart', () => {
+  const bars = [
+    { week: '2026-10-05', past: 4 }, { week: '2026-10-12', past: 6 },
+    { week: '2026-10-19', expected: 5, low: 3, high: 8, posted: 2 }, { week: '2026-10-26', expected: 5.5, low: 2.5, high: 9 },
+  ];
+
+  it('separates past from forecast, shows the range, and describes every week to assistive technology', () => {
+    render(<ForecastChart bars={bars} caption="Positions needed per week" />);
+    expect(screen.getByRole('list', { name: 'Legend' })).toHaveTextContent('Likely range');
+    expect(screen.getByRole('img', { name: /Week of Oct 5: 4 positions needed/ })).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: /Week of Oct 19: expected 5, likely 3 to 8, 2 already posted/ })).toBeInTheDocument();
+    expect(screen.getByText('Forecast →')).toBeInTheDocument();
+    fireEvent.focus(screen.getByRole('img', { name: /Week of Oct 26/ }));
+    expect(screen.getByRole('status')).toHaveTextContent('Likely range: 2.5–9');
+  });
+
+  it('copes with nothing to draw and passes accessibility checks', async () => {
+    const { container, unmount } = render(<ForecastChart bars={[]} caption="Empty" />);
+    expect(container.innerHTML).not.toMatch(/NaN|Infinity/);
+    unmount();
+    const { container: c2 } = render(<ForecastChart bars={bars} caption="Positions needed per week" />);
+    expect(await axe(c2)).toHaveNoViolations();
   });
 });

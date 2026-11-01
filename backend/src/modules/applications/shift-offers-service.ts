@@ -11,6 +11,8 @@ export type ActorKind = 'professional' | 'organization';
 const CLOSED_APPLICATION = ['withdrawn', 'cancelled', 'declined', 'rejected'];
 const OFFERABLE_JOB = ['published', 'paused'];
 export const DEFAULT_OFFER_HOURS = 48;
+/** A professional can take back an acceptance this soon after making it, with no reason needed and no mark against their record. */
+export const UNDO_WINDOW_MINUTES = 5;
 
 export const statusText = (s: string) => s.replace(/_/g, ' ');
 
@@ -44,7 +46,7 @@ async function recordRefusal(db: Db, e: RefusedForEligibility, actorUserId: stri
 
 export async function createShiftOffer(db: Db, input: {
   organizationId: string; applicationId: string; shiftId: string; actorUserId: string;
-  hourlyRateCents?: number; message?: string; expiresInHours?: number; requestId: string; now: Date;
+  hourlyRateCents?: number; message?: string; expiresInHours?: number; requestId: string; now: Date; origin?: 'facility' | 'recovery';
 }) {
   await expireOffers(db, input.now);
   return db.transaction(async (tx) => {
@@ -80,9 +82,9 @@ export async function createShiftOffer(db: Db, input: {
     const wanted = new Date(input.now.getTime() + (input.expiresInHours ?? DEFAULT_OFFER_HOURS) * 3600_000);
     const expiresAt = wanted < startsAt ? wanted : startsAt;
     const [offer] = await tx.query<{ id: string }>(
-      `INSERT INTO shift_offers (organization_id, shift_id, application_id, professional_id, hourly_rate_cents, message, expires_at, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
-      [input.organizationId, shift.id, app.id, app.professional_id, rate, input.message?.trim() || null, expiresAt, input.actorUserId]);
+      `INSERT INTO shift_offers (organization_id, shift_id, application_id, professional_id, hourly_rate_cents, message, expires_at, created_by, origin)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
+      [input.organizationId, shift.id, app.id, app.professional_id, rate, input.message?.trim() || null, expiresAt, input.actorUserId, input.origin ?? 'facility']);
     await audit(tx, {
       actorUserId: input.actorUserId, action: 'shift_offer.sent', targetType: 'shift_offer', targetId: offer!.id,
       organizationId: input.organizationId, requestId: input.requestId, metadata: { shiftId: shift.id, applicationId: app.id },
@@ -183,32 +185,39 @@ const ASSIGNMENT_RULES: AssignmentRule[] = [
 export async function transitionAssignment(db: Db, input: {
   assignmentId: string; actorKind: ActorKind; actorUserId: string; organizationId?: string; professionalId?: string;
   to: AssignmentStatus; reason?: string; requestId: string; now: Date;
+  /** The professional is undoing an acceptance made a moment ago (see UNDO_WINDOW_MINUTES). */
+  undo?: boolean;
 }) {
   return db.transaction(async (tx) => {
     const [a] = await tx.query<{
-      id: string; status: AssignmentStatus; organization_id: string; professional_id: string; shift_id: string; starts_at: string; shift_status: string; positions: number; title: string;
+      id: string; status: AssignmentStatus; organization_id: string; professional_id: string; shift_id: string; starts_at: string; shift_status: string; positions: number; title: string; created_at: string;
     }>(
-      `SELECT a.id, a.status, a.organization_id, a.professional_id, a.shift_id, s.starts_at, s.status AS shift_status, s.positions, j.title
+      `SELECT a.id, a.status, a.created_at, a.organization_id, a.professional_id, a.shift_id, s.starts_at, s.status AS shift_status, s.positions, j.title
          FROM assignments a JOIN shifts s ON s.id = a.shift_id JOIN jobs j ON j.id = s.job_id
         WHERE a.id = $1 AND ($2::uuid IS NULL OR a.organization_id = $2::uuid) AND ($3::uuid IS NULL OR a.professional_id = $3::uuid)
         FOR UPDATE OF a`, [input.assignmentId, input.organizationId ?? null, input.professionalId ?? null]);
     if (!a) throw new AppError('NOT_FOUND', 'Resource not found.');
     const rule = ASSIGNMENT_RULES.find((r) => r.to === input.to && r.actor === input.actorKind);
     if (!rule || a.status !== 'confirmed') throw new AppError('CONFLICT', `Cannot change an assignment from ${statusText(a.status)} to ${statusText(input.to)}.`);
-    if (rule.reasonRequired && !input.reason?.trim()) throw new AppError('VALIDATION_FAILED', 'A reason is required.', { fieldErrors: { reason: ['Required'] } });
+    if (input.undo) {
+      if (input.to !== 'cancelled_by_professional') throw new AppError('BAD_REQUEST', 'Only a professional\u2019s own acceptance can be undone.');
+      if (input.now.getTime() - new Date(a.created_at).getTime() > UNDO_WINDOW_MINUTES * 60_000) {
+        throw new AppError('CONFLICT', `The ${UNDO_WINDOW_MINUTES}-minute undo window has passed. You can still cancel this shift from your assignments with a reason.`);
+      }
+    } else if (rule.reasonRequired && !input.reason?.trim()) throw new AppError('VALIDATION_FAILED', 'A reason is required.', { fieldErrors: { reason: ['Required'] } });
     const started = new Date(a.starts_at) <= input.now;
     if (rule.afterStart && !started) throw new AppError('CONFLICT', 'This can only be recorded once the shift has started.');
     if (rule.cancels && started) throw new AppError('CONFLICT', 'A shift that has already started cannot be cancelled.');
 
-    await tx.query('UPDATE assignments SET status = $2, updated_at = now() WHERE id = $1', [a.id, input.to]);
+    await tx.query('UPDATE assignments SET status = $2, undone_at = CASE WHEN $3 THEN $4::timestamptz END, updated_at = now() WHERE id = $1', [a.id, input.to, !!input.undo, input.now]);
     await tx.query(
       'INSERT INTO assignment_status_history (assignment_id, actor_user_id, actor_kind, from_status, to_status, reason) VALUES ($1,$2,$3,$4,$5,$6)',
-      [a.id, input.actorUserId, input.actorKind, a.status, input.to, input.reason?.trim() ?? null]);
+      [a.id, input.actorUserId, input.actorKind, a.status, input.to, input.undo ? 'Undone within the undo window' : input.reason?.trim() ?? null]);
     if (rule.cancels && a.shift_status === 'filled') {
       await tx.query(`UPDATE shifts SET status = 'open', updated_at = now() WHERE id = $1 AND status = 'filled'`, [a.shift_id]);
     }
     await audit(tx, {
-      actorUserId: input.actorUserId, action: `assignment.status.${input.to}`, targetType: 'assignment', targetId: a.id,
+      actorUserId: input.actorUserId, action: input.undo ? 'assignment.undone' : `assignment.status.${input.to}`, targetType: 'assignment', targetId: a.id,
       organizationId: a.organization_id, requestId: input.requestId, metadata: { from: a.status, to: input.to },
     });
     return { id: a.id, status: input.to, previousStatus: a.status, organizationId: a.organization_id, professionalId: a.professional_id, shiftId: a.shift_id, jobTitle: a.title };

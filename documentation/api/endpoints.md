@@ -136,3 +136,21 @@ Facility: `GET /organizations/:orgId/assistant/status` -> `{configured}`; `POST 
 Agency: the same under `/organizations/:orgId/agency/assistant` (agency.jobs.read).
 
 Returns 503 `UNAVAILABLE` when no API key is set or the provider fails, 429 after 30 requests per user per hour. Configuration: `ANTHROPIC_API_KEY`, optional `ASSISTANT_MODEL`, `ASSISTANT_EFFORT`.
+
+## Demand forecast
+Facility: `GET /organizations/:orgId/forecast?horizon=4..12` (jobs.read). Each of `overall` and `byProfession[]` is either `{status: "insufficient_history", reason}` or `{status: "ok", method, confidence, backtest, history, forecast: [{week, expected, low, high, alreadyPosted, expectedUnfilled}]}`.
+
+## Regional float pool
+Staff, `/admin/exchange` (admin.marketplace_oversight): `GET|POST /regions`, `PATCH /regions/:id`, `GET /participants`, `POST /participants/:id/status` `{status: suspended|active, reason}`.
+
+Professional, `/professionals/me/float-pool`: `GET /` (regions and consent text), `POST /join` `{regionId, accept: true}`, `POST /leave` `{regionId}`, `GET /requests`, `POST /requests/:id/respond` `{response: accepted|declined}`.
+
+Facility, `/organizations/:orgId/exchange`: `GET /regions` (org.read), `POST /participation` `{regionId, acceptTerms: true}` and `DELETE /participation/:regionId` (org.update); `GET /shifts?regionId`, `GET /pool/summary?regionId`, `GET /pool?regionId&shiftId&professionId&show=eligible|all` (professionals.search, approved, participating); `POST /requests` `{talentRef, shiftId, hourlyRateCents?, message?}` and `DELETE /requests/:id` (applications.manage); `GET /requests` (applications.read).
+
+## Unfilled shift recovery
+Facility, under `/organizations/:orgId/shift-recovery`: `GET /settings` (applications.read), `PUT /settings` `{enabled, maxOutreach, offerHours, escalateHours, minLeadHours, includeFloatPool}` (org.update, approved organization); `GET /` shifts in recovery with escalations (applications.read); `POST /shifts/:shiftId/start` and `/stop` (applications.manage); `POST /run` runs a pass for this organization now (applications.manage; 10 per hour).
+
+Configuration: `SHIFT_RECOVERY_INTERVAL_MINUTES` (default 5; 0 disables the timer).
+
+## Shift offers: details, one-tap accept, undo
+Professional, under `/professionals/me`: `GET /shift-offers` and `GET /shift-offers/:id` now include `location_name`, `address_line1`, `shift_notes`, `requirements[]`, `eligibility` (for open offers), and the linked `assignment_*` fields. `POST /shift-offers/:id/respond` `{response}` returns, on acceptance, `undoUntil` and `nextSteps`. `POST /assignments/:id/undo` takes back an acceptance made within 5 minutes (no reason; does not count against reliability).

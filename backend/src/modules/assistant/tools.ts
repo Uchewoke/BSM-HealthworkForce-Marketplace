@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { Db } from '../../db/index.js';
 import type { AssistantTool } from '../../integrations/assistant.js';
 import { agencyAnalytics, facilityAnalytics, resolveRange } from '../analytics/routes.js';
+import { loadForecast } from '../forecast/routes.js';
 import { checkJobRules, EMPLOYMENT_TYPES } from '../jobs/schemas.js';
 
 /**
@@ -17,6 +18,7 @@ export interface JobDraft {
 }
 
 const daysInput = z.object({ days: z.number().int().min(7).max(366).optional() });
+const horizonInput = z.object({ weeks: z.number().int().min(4).max(12).optional() });
 const draftInput = z.object({
   title: z.string().trim().min(3).max(160),
   description: z.string().trim().min(20).max(8000),
@@ -51,6 +53,18 @@ export function facilityTools(ctx: ToolContext, onDraft: (d: JobDraft) => void):
         const { days } = daysInput.parse(input ?? {});
         const result = await facilityAnalytics(db, org, windowFor(days, ctx.now()), canSeeCosts);
         return { ...result, includesCosts: canSeeCosts };
+      },
+    },
+    {
+      name: 'get_demand_forecast',
+      description: 'A statistical forecast of how many staff positions the organization will need in each coming week, overall and for its busiest professions, with a low-high range, a confidence label, the method, and how accurate the method has been on recent weeks. Also shows positions already posted and an estimate of what may go unfilled. This is an estimate, not a promise: always give the range and the confidence, and say when the status is insufficient_history.',
+      inputSchema: OBJECT({ weeks: { type: 'integer', minimum: 4, maximum: 12, description: 'How many weeks ahead. Default 8.' } }),
+      async run(input) {
+        const { weeks } = horizonInput.parse(input ?? {});
+        const f = await loadForecast(db, org, weeks ?? 8, ctx.now());
+        // Keep the answer small: the most recent history is enough context for the model.
+        const trim = <T extends { history: unknown[] }>(x: T) => ({ ...x, history: x.history.slice(-12) });
+        return { ...f, overall: trim(f.overall), byProfession: f.byProfession.map(trim) };
       },
     },
     {
@@ -191,6 +205,7 @@ export const facilitySystemPrompt = (today: string, canSeeCosts: boolean) => `${
 
 You are helping a staff member of a healthcare FACILITY. Today is ${today} (UTC).
 ${canSeeCosts ? 'This user may see cost figures.' : 'This user may NOT see cost or billing figures: do not discuss them, and say you cannot show cost if asked.'}
+Forecasts are estimates: always give the range and the confidence label, never state a single figure as certain, and say plainly when there is not enough history to forecast.
 When asked to write a job posting: call get_job_setup_options, ask a brief question if the profession, location or employment type is missing, then call propose_job_draft with a clear, accurate description using only what the user told you. Do not add credential requirements, benefits or pay that the user did not state. Afterwards say it is a draft for them to review and that requirements and shifts are added on the job page.`;
 
 export const agencySystemPrompt = (today: string) => `${COMMON_RULES}

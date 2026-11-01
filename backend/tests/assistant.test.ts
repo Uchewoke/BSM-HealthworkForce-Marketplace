@@ -144,7 +144,7 @@ describe('AI assistant', () => {
     // Request shape: the configured model, no sampling overrides, no forced tool, no disabled thinking, the safety fallback on.
     expect(calls[0]).toMatchObject({ model: 'claude-opus-5-5', output_config: { effort: 'medium' }, fallbacks: 'default', betas: ['server-side-fallback-2026-07-01'] });
     for (const banned of ['temperature', 'top_p', 'top_k', 'tool_choice', 'thinking']) expect(calls[0]).not.toHaveProperty(banned);
-    expect(calls[0].tools.map((t: any) => t.name).sort()).toEqual(['get_job_setup_options', 'get_pending_work', 'get_staffing_summary', 'list_jobs', 'propose_job_draft']);
+    expect(calls[0].tools.map((t: any) => t.name).sort()).toEqual(['get_demand_forecast', 'get_job_setup_options', 'get_pending_work', 'get_staffing_summary', 'list_jobs', 'propose_job_draft']);
     expect(calls[0].messages).toEqual([{ role: 'user', content: 'How are we doing on filling shifts?' }]);
   });
 

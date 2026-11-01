@@ -73,7 +73,7 @@ export async function facilityAnalytics(q: Queryable, orgId: string, range: Rang
     .map((r) => ({ profession: r.name, positionsPosted: num(r.posted), positionsFilled: num(r.filled), fillRate: pct(num(r.filled), num(r.posted)) }));
 
   const outcomeRows = await q.query<{ status: string; n: string }>(
-    `SELECT a.status, count(*) AS n FROM assignments a JOIN shifts s ON s.id = a.shift_id WHERE ${shiftsIn} GROUP BY a.status`, args);
+    `SELECT CASE WHEN a.undone_at IS NOT NULL THEN 'undone' ELSE a.status END AS status, count(*) AS n FROM assignments a JOIN shifts s ON s.id = a.shift_id WHERE ${shiftsIn} GROUP BY 1`, args);
   const outcomeCount = (st: string) => num(outcomeRows.find((r) => r.status === st)?.n);
   const outcomes = {
     confirmed: outcomeCount('confirmed'), completed: outcomeCount('completed'), noShow: outcomeCount('no_show'),

@@ -6,6 +6,7 @@ import { AppError } from '../../shared/errors.js';
 import { buildInsert, buildReplace, buildSet } from '../../shared/sql.js';
 import { audit } from '../audit/service.js';
 import { professionalAgencyRoutes } from '../agencies/routes.js';
+import { professionalExchangeRoutes } from '../exchange/routes.js';
 import { professionalReviewRoutes } from '../reviews/routes.js';
 import { professionalTimesheetRoutes } from '../timesheets/routes.js';
 import { professionalApplicationRoutes } from '../applications/routes.js';
@@ -167,6 +168,7 @@ export function professionalRoutes(deps: AppDeps, needAuth: RequestHandler) {
   r.use('/me', professionalAgencyRoutes(deps));
   r.use('/me', professionalTimesheetRoutes(deps));
   r.use('/me', professionalReviewRoutes(deps));
+  r.use('/me/float-pool', professionalExchangeRoutes(deps));
   r.use('/me', shiftOfferProfessionalRoutes(deps));
   r.use('/me', professionalTalentRoutes(deps));
   return r;

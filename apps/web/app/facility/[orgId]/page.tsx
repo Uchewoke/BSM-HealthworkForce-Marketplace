@@ -17,6 +17,8 @@ export default function OrgOverview() {
   const reviews = useApi<{ reviews: { id: string; actor_kind: string; from_status: string; to_status: string; reason: string | null; created_at: string }[] }>(`/organizations/${org.id}/reviews`);
   const openJobs = useApi<{ total: number }>(approved ? `/organizations/${org.id}/jobs` : null, { status: 'published', pageSize: 1 });
   const newApps = useApi<{ total: number }>(approved ? `/organizations/${org.id}/applications` : null, { status: 'submitted', pageSize: 1 });
+  const recovery = useApi<{ shifts: { status: string; escalated_at: string | null; open_positions: number }[] }>(approved ? `/organizations/${org.id}/shift-recovery` : null);
+  const needAttention = recovery.data?.shifts.filter((x) => x.status === 'active' && x.escalated_at && x.open_positions > 0).length ?? 0;
   const g = GUIDE[org.status] ?? GUIDE.draft!;
   const last = reviews.data?.reviews.filter((r) => r.actor_kind === 'platform').at(-1);
   return (
@@ -24,6 +26,7 @@ export default function OrgOverview() {
       <PageHeader title="Overview" />
       <Alert tone={g.tone}>{g.text}</Alert>
       {last?.reason && ['needs_information', 'rejected', 'suspended'].includes(org.status) && <Alert tone="warning" title="Message from BSM">{last.reason}</Alert>}
+      {needAttention > 0 && <Alert tone="warning" title={`${needAttention} shift${needAttention === 1 ? '' : 's'} still unfilled`}>Automatic outreach could not fill {needAttention === 1 ? 'it' : 'them'}. <a href={`/facility/${org.id}/recovery`}>See what happened and the suggested next steps</a>.</Alert>}
       {(org.status === 'draft' || org.status === 'needs_information') && <p><LinkButton href={`/facility/${org.id}/settings`}>Go to organization profile</LinkButton></p>}
       {approved && (
         <div className="grid">

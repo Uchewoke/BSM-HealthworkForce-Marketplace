@@ -47,8 +47,8 @@ export async function reliability(q: Queryable, professionalId: string) {
   const [row] = await q.query<Record<string, string>>(
     `SELECT count(*) FILTER (WHERE a.status = 'completed') AS completed,
             count(*) FILTER (WHERE a.status = 'no_show') AS no_shows,
-            count(*) FILTER (WHERE a.status = 'cancelled_by_professional') AS cancellations,
-            count(*) FILTER (WHERE a.status = 'cancelled_by_professional' AND EXISTS (
+            count(*) FILTER (WHERE a.status = 'cancelled_by_professional' AND a.undone_at IS NULL) AS cancellations,
+            count(*) FILTER (WHERE a.status = 'cancelled_by_professional' AND a.undone_at IS NULL AND EXISTS (
               SELECT 1 FROM assignment_status_history h WHERE h.assignment_id = a.id AND h.to_status = 'cancelled_by_professional'
                 AND h.created_at > s.starts_at - interval '${LATE_CANCEL_HOURS} hours')) AS late_cancellations
        FROM assignments a JOIN shifts s ON s.id = a.shift_id WHERE a.professional_id = $1`, [professionalId]);

@@ -104,6 +104,84 @@ export function ColumnChart({ data, series, bucket, unit = '', format = (n) => S
   );
 }
 
+export interface ForecastBar { week: string; past?: number; expected?: number; low?: number; high?: number; posted?: number }
+
+/**
+ * Past demand (blue columns) followed by the forecast (orange columns with a whisker for the likely range).
+ * One axis, one unit. The whisker is a range, not a promise: the legend and caption say so.
+ */
+export function ForecastChart({ bars, caption }: { bars: ForecastBar[]; caption: string }) {
+  const id = useId();
+  const [hover, setHover] = useState<number | null>(null);
+  const W = 720, H = 260, L = 44, R = 8, T = 10, B = 28;
+  const max = niceMax(Math.max(0, ...bars.flatMap((b) => [b.past ?? 0, b.high ?? 0, b.expected ?? 0])));
+  const plotW = W - L - R, plotH = H - T - B;
+  const group = plotW / Math.max(1, bars.length);
+  const barW = Math.max(3, Math.min(20, group - 4));
+  const y = (v: number) => T + plotH - (v / max) * plotH;
+  const firstForecast = bars.findIndex((b) => b.expected !== undefined);
+  const every = Math.ceil(bars.length / 10);
+  const label = (b: ForecastBar) => b.expected !== undefined
+    ? `Week of ${shortDate(b.week, 'week')}: expected ${b.expected}, likely ${b.low} to ${b.high}${b.posted ? `, ${b.posted} already posted` : ''}`
+    : `Week of ${shortDate(b.week, 'week')}: ${b.past ?? 0} positions needed`;
+  return (
+    <div className="viz" style={{ position: 'relative' }}>
+      <ul className="viz-legend" aria-label="Legend">
+        <li><i style={{ background: 'var(--viz-s1)' }} />Positions needed (past)</li>
+        <li><i style={{ background: 'var(--viz-s2)' }} />Forecast (expected)</li>
+        <li><span aria-hidden="true" style={{ display: 'inline-block', width: 2, height: 12, background: 'var(--viz-ink)', marginRight: 8, verticalAlign: 'middle' }} />Likely range</li>
+      </ul>
+      <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="group" aria-labelledby={id} onMouseLeave={() => setHover(null)}>
+        <title id={id}>{`${caption}. ${bars.map(label).join('; ')}`}</title>
+        {[0, 1, 2, 3, 4].map((i) => (
+          <g key={i}>
+            <line x1={L} x2={W - R} y1={y((max / 4) * i)} y2={y((max / 4) * i)} stroke="var(--viz-grid)" strokeWidth={i === 0 ? 1.5 : 1} />
+            <text x={L - 6} y={y((max / 4) * i) + 4} textAnchor="end" fontSize="11" fill="var(--viz-axis)">{Math.round((max / 4) * i * 10) / 10}</text>
+          </g>
+        ))}
+        {firstForecast > 0 && (
+          <g>
+            <line x1={L + firstForecast * group} x2={L + firstForecast * group} y1={T} y2={T + plotH} stroke="var(--viz-axis)" strokeDasharray="4 4" />
+            <text x={L + firstForecast * group + 6} y={T + 12} fontSize="11" fill="var(--viz-axis)">Forecast →</text>
+          </g>
+        )}
+        {bars.map((b, i) => {
+          const cx = L + i * group + group / 2;
+          const v = b.expected ?? b.past ?? 0;
+          const h = (v / max) * plotH;
+          return (
+            <g key={b.week}>
+              {h > 0 && <rect x={cx - barW / 2} y={y(v)} width={barW} height={h} rx={Math.min(4, barW / 2)} fill={b.expected !== undefined ? 'var(--viz-s2)' : 'var(--viz-s1)'} opacity={hover === null || hover === i ? 1 : 0.45} />}
+              {b.expected !== undefined && b.low !== undefined && b.high !== undefined && (
+                <g stroke="var(--viz-ink)" strokeWidth="1.5">
+                  <line x1={cx} x2={cx} y1={y(b.low)} y2={y(b.high)} />
+                  <line x1={cx - 4} x2={cx + 4} y1={y(b.high)} y2={y(b.high)} />
+                  <line x1={cx - 4} x2={cx + 4} y1={y(b.low)} y2={y(b.low)} />
+                </g>
+              )}
+              {i % every === 0 && <text x={cx} y={H - 8} textAnchor="middle" fontSize="11" fill="var(--viz-axis)">{shortDate(b.week, 'week')}</text>}
+              <rect x={L + i * group} y={T} width={group} height={plotH} fill="transparent" tabIndex={0} role="img" aria-label={label(b)}
+                onMouseEnter={() => setHover(i)} onFocus={() => setHover(i)} onBlur={() => setHover(null)} />
+            </g>
+          );
+        })}
+      </svg>
+      {hover !== null && bars[hover] && (
+        <div className="viz-tip" role="status" style={{ left: `${Math.min(70, Math.max(0, ((L + hover * group) / W) * 100))}%`, top: 24 }}>
+          <strong>Week of {shortDate(bars[hover]!.week, 'week')}</strong>
+          {bars[hover]!.expected !== undefined ? (
+            <>
+              <div>Expected: {bars[hover]!.expected}</div>
+              <div>Likely range: {bars[hover]!.low}–{bars[hover]!.high}</div>
+              {!!bars[hover]!.posted && <div>Already posted: {bars[hover]!.posted}</div>}
+            </>
+          ) : <div>Positions needed: {bars[hover]!.past ?? 0}</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** Ranked horizontal bars in one hue. `value` sizes the bar; `label` is the text shown at the right. */
 export function BarList({ rows, max }: { rows: { name: string; value: number; label: string; title?: string }[]; max?: number }) {
   const top = max ?? Math.max(1, ...rows.map((r) => r.value));

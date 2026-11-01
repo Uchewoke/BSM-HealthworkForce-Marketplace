@@ -1,4 +1,3 @@
-import { randomBytes } from 'node:crypto';
 import { Router, type Request, type RequestHandler } from 'express';
 import { z } from 'zod';
 import { requireApprovedOrg, requireOrgPermission } from '../../middleware/access.js';
@@ -13,6 +12,7 @@ import { evaluateMatch, type MatchResult } from '../matching/loader.js';
 import { experienceYears } from '../matching/eligibility.js';
 import { notifyUsers } from '../notifications/service.js';
 import { loadProfessional } from '../professionals/service.js';
+import { talentRefFor } from './refs.js';
 import { EMPLOYMENT_TYPES, stateCode } from '../professionals/schemas.js';
 
 const MAX_RESULT_WINDOW = 300;          // a facility can never page past this many results (anti-scraping)
@@ -55,13 +55,7 @@ export function talentRoutes(deps: AppDeps) {
   const search = [requireOrgPermission(deps, 'professionals.search'), requireApprovedOrg(deps)];
   const orgOf = (req: Request) => req.membership!.organizationId;
 
-  async function refFor(orgId: string, professionalId: string): Promise<string> {
-    const [row] = await db.query<{ ref: string }>(
-      `INSERT INTO talent_refs (organization_id, professional_id, ref) VALUES ($1,$2,$3)
-       ON CONFLICT (organization_id, professional_id) DO UPDATE SET organization_id = EXCLUDED.organization_id RETURNING ref`,
-      [orgId, professionalId, randomBytes(16).toString('base64url')]);
-    return row!.ref;
-  }
+  const refFor = (orgId: string, professionalId: string) => talentRefFor(db, orgId, professionalId);
 
   r.get('/', validate({ params: orgParams }), ...search, async (req, res) => {
     if (!searchLimiter.allow(`talent:${req.auth!.userId}`)) throw new AppError('RATE_LIMITED', 'Too many searches. Try again shortly.');

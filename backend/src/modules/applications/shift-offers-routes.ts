@@ -5,9 +5,10 @@ import { param, validate } from '../../middleware/http.js';
 import type { AppDeps } from '../../shared/deps.js';
 import { AppError } from '../../shared/errors.js';
 import { notifyUsers, orgUserIdsWithPermission } from '../notifications/service.js';
+import { evaluateMatch } from '../matching/loader.js';
 import { loadProfessional } from '../professionals/service.js';
 import {
-  ASSIGNMENT_STATUSES, OFFER_STATUSES, createShiftOffer, expireOffers, respondToShiftOffer, statusText, transitionAssignment, withdrawShiftOffer,
+  ASSIGNMENT_STATUSES, OFFER_STATUSES, UNDO_WINDOW_MINUTES, createShiftOffer, expireOffers, respondToShiftOffer, statusText, transitionAssignment, withdrawShiftOffer,
 } from './shift-offers-service.js';
 
 const page = {
@@ -141,6 +142,26 @@ export function shiftOfferProfessionalRoutes(deps: AppDeps) {
   const r = Router();
   const me = (req: Request) => loadProfessional(db, req.auth!.userId);
 
+  /**
+   * Adds what a professional needs to say yes with confidence: the job's requirements and whether they meet them right now.
+   * The eligibility shown is the same check the platform will run again when they accept.
+   */
+  async function withDecisionDetails(rows: { id: string; job_id: string; shift_id: string; application_id: string; status: string }[], professionalId: string) {
+    const jobIds = [...new Set(rows.map((r) => r.job_id))];
+    const reqs = jobIds.length ? await db.query<{ job_id: string; kind: string; credential_type: string | null; jurisdiction: string | null; description: string | null; mandatory: boolean }>(
+      'SELECT job_id, kind, credential_type, jurisdiction, description, mandatory FROM job_requirements WHERE job_id = ANY($1::uuid[]) ORDER BY mandatory DESC, created_at, id', [jobIds]) : [];
+    const out = [];
+    for (const r of rows) {
+      let eligibility: { outcome: string; reasons: { code: string; message: string }[] } | null = null;
+      if (r.status === 'sent') {
+        const m = await evaluateMatch(db, { professionalId, jobId: r.job_id, shiftIds: [r.shift_id], now: now(), excludeApplicationId: r.application_id });
+        eligibility = { outcome: m.eligibility.outcome, reasons: m.eligibility.reasons.map((x) => ({ code: x.code, message: x.message })) };
+      }
+      out.push({ ...r, requirements: reqs.filter((q) => q.job_id === r.job_id).map(({ job_id: _j, ...rest }) => rest), eligibility });
+    }
+    return out;
+  }
+
   r.get('/shift-offers', async (req, res) => {
     const p = await me(req);
     await expireOffers(db, now());
@@ -150,20 +171,22 @@ export function shiftOfferProfessionalRoutes(deps: AppDeps) {
     if (q.status) { args.push(q.status); where += ` AND o.status = $${args.length}`; }
     const [count] = await db.query<{ n: string }>(`SELECT count(*) AS n FROM shift_offers o WHERE ${where}`, args);
     const rows = await db.query(
-      `SELECT ${OFFER_COLS}, org.name AS organization_name FROM ${OFFER_FROM} JOIN organizations org ON org.id = o.organization_id
+      `SELECT ${OFFER_COLS}, s.notes AS shift_notes, l.name AS location_name, l.address_line1, org.name AS organization_name,
+              asg.id AS assignment_id, asg.status AS assignment_status, asg.created_at AS assignment_created_at
+         FROM ${OFFER_FROM} JOIN organizations org ON org.id = o.organization_id LEFT JOIN assignments asg ON asg.offer_id = o.id
         WHERE ${where} ORDER BY o.created_at DESC, o.id LIMIT $${args.length + 1} OFFSET $${args.length + 2}`, [...args, q.pageSize, (q.page - 1) * q.pageSize]);
-    res.json({ offers: rows, page: q.page, pageSize: q.pageSize, total: Number(count?.n ?? 0) });
+    res.json({ offers: await withDecisionDetails(rows as any[], p.id), undoWindowMinutes: UNDO_WINDOW_MINUTES, page: q.page, pageSize: q.pageSize, total: Number(count?.n ?? 0) });
   });
 
   r.get('/shift-offers/:id', validate({ params: idParams }), async (req, res) => {
     const p = await me(req);
     await expireOffers(db, now());
     const [offer] = await db.query<any>(
-      `SELECT ${OFFER_COLS}, s.positions, org.name AS organization_name FROM ${OFFER_FROM} JOIN organizations org ON org.id = o.organization_id
+      `SELECT ${OFFER_COLS}, s.positions, s.notes AS shift_notes, l.name AS location_name, l.address_line1, org.name AS organization_name FROM ${OFFER_FROM} JOIN organizations org ON org.id = o.organization_id
         WHERE o.id = $1 AND o.professional_id = $2`, [param(req, 'id'), p.id]);
     if (!offer) throw new AppError('NOT_FOUND', 'Resource not found.');
     const [asg] = await db.query<{ id: string }>('SELECT id FROM assignments WHERE offer_id = $1', [offer.id]);
-    res.json({ offer, assignmentId: asg?.id ?? null });
+    res.json({ offer: (await withDecisionDetails([offer], p.id))[0], assignmentId: asg?.id ?? null });
   });
 
   r.post('/shift-offers/:id/respond', validate({ params: idParams, body: respondBody }), async (req, res) => {
@@ -178,7 +201,32 @@ export function shiftOfferProfessionalRoutes(deps: AppDeps) {
       category: 'application_updates', type: `shift_offer.${out.status}`, title: `Shift offer ${out.status}: ${out.jobTitle}`,
       body: `${who?.full_name ?? 'The professional'} ${out.status} the shift offer.`, data: { offerId: out.offerId, shiftId: out.shiftId, assignmentId: out.assignmentId },
     });
-    res.json({ offer: { id: out.offerId, status: out.status }, assignmentId: out.assignmentId });
+    const accepted = out.status === 'accepted';
+    res.json({
+      offer: { id: out.offerId, status: out.status }, assignmentId: out.assignmentId,
+      ...(accepted ? {
+        undoUntil: new Date(now().getTime() + UNDO_WINDOW_MINUTES * 60_000).toISOString(),
+        nextSteps: [
+          'Your shift is booked and the facility has been told.',
+          `You can undo this in the next ${UNDO_WINDOW_MINUTES} minutes with no questions asked. After that, cancelling needs a reason.`,
+          'After the shift, record your hours under Timesheets. The facility approves them, and you can then review the shift.',
+        ],
+      } : {}),
+    });
+  });
+
+  /** Takes back an acceptance made within the undo window. It does not count against reliability. */
+  r.post('/assignments/:id/undo', validate({ params: idParams }), async (req, res) => {
+    const p = await me(req);
+    const out = await transitionAssignment(db, {
+      assignmentId: param(req, 'id'), actorKind: 'professional', actorUserId: req.auth!.userId, professionalId: p.id,
+      to: 'cancelled_by_professional', requestId: req.requestId, now: now(), undo: true,
+    });
+    await notifyUsers(deps, await orgUserIdsWithPermission(db, out.organizationId, 'applications.manage'), {
+      category: 'application_updates', type: 'assignment.undone', title: `Shift reopened: ${out.jobTitle}`,
+      body: 'The professional took back their acceptance moments after making it. The shift is open again.', data: { assignmentId: out.id, shiftId: out.shiftId },
+    });
+    res.json({ assignment: { id: out.id, status: out.status } });
   });
 
   r.get('/assignments', async (req, res) => {

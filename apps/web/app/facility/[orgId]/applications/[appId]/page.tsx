@@ -11,7 +11,7 @@ import { useOrg } from '@/lib/org';
 import { ApplicationShiftOffers } from '../shift-sections';
 
 interface Detail {
-  application: { id: string; status: string; cover_note: string | null; created_at: string; job_id: string; job_title: string; full_name: string; headline: string | null; summary: string | null; city: string | null; state: string | null; profession: string; submitted_by_agency?: string | null };
+  application: { id: string; status: string; cover_note: string | null; created_at: string; job_id: string; job_title: string; full_name: string; headline: string | null; summary: string | null; city: string | null; state: string | null; profession: string; submitted_by_agency?: string | null; source?: string };
   applicant: {
     specialties: string[]; experience: { employer: string; title: string; start_date: string; end_date: string | null; is_current: boolean }[];
     education: { institution: string; degree: string; field_of_study: string | null }[];
@@ -70,7 +70,7 @@ export default function ApplicationDetailPage() {
       <QueryBoundary state={state}>
         {(d) => (
           <>
-            <PageHeader title={d.application.full_name} subtitle={<>{d.application.profession} · applied to <Link href={`/facility/${org.id}/jobs/${d.application.job_id}/candidates`}>{d.application.job_title}</Link> · <ApplicationStatusBadge status={d.application.status} />{d.application.submitted_by_agency && <> · submitted by {d.application.submitted_by_agency}</>}</>} />
+            <PageHeader title={d.application.full_name} subtitle={<>{d.application.profession} · applied to <Link href={`/facility/${org.id}/jobs/${d.application.job_id}/candidates`}>{d.application.job_title}</Link> · <ApplicationStatusBadge status={d.application.status} />{d.application.submitted_by_agency && <> · submitted by {d.application.submitted_by_agency}</>}{d.application.source === 'float_pool' && <> · booked through the regional float pool</>}</>} />
             <Card title="Actions"><Actions d={d} orgId={org.id} reload={state.reload} canManage={can('applications.manage')} /></Card>
             <ApplicationShiftOffers orgId={org.id} applicationId={d.application.id} shifts={d.selectedShifts} canManage={can('applications.manage')} />
             <Card title="Eligibility"><EligibilityPanel eligibility={d.eligibility} /><p className="small muted">Rules version {d.eligibility.rulesVersion}. Credentials show their status; numbers and documents are never shown to facilities.</p></Card>

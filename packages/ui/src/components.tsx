@@ -124,8 +124,8 @@ export function RequireAuth({ children, platform = false, loginPath = '/login' }
 type Tone = 'primary' | 'secondary' | 'danger';
 const btnClass = (tone: Tone) => `btn${tone === 'secondary' ? ' secondary' : ''}${tone === 'danger' ? ' danger' : ''}`;
 
-export function Button({ tone = 'primary', pending, children, ...rest }: ButtonHTMLAttributes<HTMLButtonElement> & { tone?: Tone; pending?: boolean }) {
-  return <button type="button" {...rest} className={btnClass(tone)} disabled={rest.disabled || pending} aria-busy={pending || undefined}>{pending ? 'Working…' : children}</button>;
+export function Button({ tone = 'primary', pending, children, className, ...rest }: ButtonHTMLAttributes<HTMLButtonElement> & { tone?: Tone; pending?: boolean }) {
+  return <button type="button" {...rest} className={`${btnClass(tone)}${className ? ` ${className}` : ''}`} disabled={rest.disabled || pending} aria-busy={pending || undefined}>{pending ? 'Working…' : children}</button>;
 }
 
 export function LinkButton({ href, tone = 'primary', children }: { href: string; tone?: Tone; children: ReactNode }) {
