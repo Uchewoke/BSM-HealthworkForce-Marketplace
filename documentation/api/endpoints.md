@@ -36,6 +36,10 @@ Lists are paginated with `page` / `pageSize` (max 50, audit max 200) and allowli
 | `GET /:orgId/jobs/:jobId/candidates` | applications.read; eligible candidates ranked, others listed with reasons |
 | `GET /:orgId/applications`, `GET /:orgId/applications/:appId` | applications.read |
 | `POST /:orgId/applications/:appId/status` | applications.manage; offers require eligibility |
+| `POST /:orgId/applications/:appId/shift-offers` | applications.manage; shift-based offer, requires eligibility; body `shiftId`, optional `hourlyRateCents`, `message`, `expiresInHours` |
+| `GET /:orgId/shift-offers` (filters `status`, `applicationId`), `POST /:orgId/shift-offers/:offerId/withdraw` | applications.read / applications.manage |
+| `GET /:orgId/assignments`, `GET /:orgId/assignments/:id` | applications.read |
+| `POST /:orgId/assignments/:id/status` | applications.manage; `completed`/`no_show` after start, `cancelled_by_facility` before start (reason required) |
 
 `POST /invitations/accept` (signed in; the invited address only).
 
@@ -43,6 +47,8 @@ Lists are paginated with `page` / `pageSize` (max 50, audit max 200) and allowli
 `POST /`, `GET|PATCH /me`, `PUT /me/specialties`, `GET|POST /me/education`, `PUT|DELETE /me/education/:id`, same for `/me/experience`, `GET|PUT /me/preferences`, `GET|PUT /me/availability`.
 Credentials: `GET|POST /me/credentials`, `GET|PATCH|DELETE /me/credentials/:id`, `POST …/:id/submit`, `GET|POST …/:id/documents` (raw body, PDF/JPEG/PNG ≤ 10 MB), `DELETE …/:id/documents/:docId`, `POST …/:id/documents/:docId/access` (60-second signed link).
 Applications: `GET /me/applications`, `GET /me/applications/:id`, `POST /me/applications/:id/status` (withdrawn | accepted | declined).
+
+Shift offers and assignments: `GET /me/shift-offers[/:id]`, `POST /me/shift-offers/:id/respond` (`response`: accepted | declined; acceptance re-checks eligibility and capacity), `GET /me/assignments[/:id]`, `POST /me/assignments/:id/cancel` (reason required, before the shift starts).
 `GET /credential-documents/download?token=` streams a document to the owner or a credential reviewer (re-authorized, audited).
 
 ## Opportunities (`/jobs`, signed in)
@@ -74,3 +80,59 @@ Applications: `GET /me/applications`, `GET /me/applications/:id`, `POST /me/appl
 | `POST|PATCH /taxonomies/professions[/:id]`, `POST|PATCH /taxonomies/specialties[/:id]`, `GET /states`, `PUT /states/:state` | taxonomy_manage |
 | `GET|PUT /settings/ranking-weights`, `GET /metrics` | settings_manage |
 | `GET /support/tickets[/:id]`, `POST …/messages`, `POST …/assign`, `POST …/status` | support |
+
+## Staffing agencies
+Agency organizations use `/organizations/:orgId/agency/*` (the organization must be an agency; roles `agency_*`).
+| Path | Permission |
+|---|---|
+| `GET /roster` | agency.roster.read |
+| `POST /roster/invitations` `{email}` (always 202), `DELETE /roster/:rosterId` | agency.roster.manage (approved organization) |
+| `GET /jobs` (only jobs a facility granted) | agency.jobs.read |
+| `POST /jobs/:jobId/submissions` `{professionalId, shiftIds?, coverNote?}` | agency.submissions.manage (approved organization) |
+| `GET /submissions`, `GET /placements` | agency.submissions.read |
+
+Facility side, under `/organizations/:orgId`: `GET /agencies?q=` (approved agencies, id and name only) and `GET /jobs/:jobId/agencies` (jobs.read); `POST /jobs/:jobId/agencies` `{agencyId}` and `DELETE /jobs/:jobId/agencies/:agencyId` (jobs.manage).
+
+Professional side, under `/professionals/me`: `GET /agencies`, `POST /agencies/:id/respond` `{response: accept|decline}`, `DELETE /agencies/:id` (leave).
+
+Admin: `GET /admin/organizations?type=agency|facility&status=` (default facility).
+
+## Billing (manual invoicing)
+Staff, under `/admin/billing` (platform permission `admin.billing_manage`, MFA):
+| Path | Notes |
+|---|---|
+| `GET /fee`, `PUT /fee` `{bps}` | Platform fee in basis points; unset until staff configure it |
+| `GET /organizations?q=` | Name search (id, name, type) |
+| `GET /unbilled?organizationId&periodStart&periodEnd` | Preview of billable completed assignments |
+| `GET /invoices`, `GET /invoices/:id`, `POST /invoices` `{organizationId, periodStart, periodEnd}` | Creates a draft; 409 if no fee or nothing to bill |
+| `POST /invoices/:id/issue` `{dueInDays?}`, `POST /invoices/:id/payment` `{method, reference, paidOn?}`, `POST /invoices/:id/void` `{reason}` | draft→issued→paid; draft/issued→void |
+
+Organizations, under `/organizations/:orgId/billing` (permission `billing.read`): `GET /invoices`, `GET /invoices/:id` (issued invoices only).
+
+Agency job detail: `GET /organizations/:orgId/agency/jobs/:jobId` (agency.jobs.read).
+
+## Timesheets
+Professional, under `/professionals/me`: `GET /timesheets` (started assignments with their timesheet), `GET /assignments/:id/timesheet`, `PUT /assignments/:id/timesheet` `{workedStart, workedEnd, breakMinutes, note?}` (creates, or resubmits after a return).
+
+Facility, under `/organizations/:orgId`: `GET /timesheets?status=`, `GET /timesheets/:id` (applications.read); `POST /timesheets/:id/review` `{decision: approve|return, reason?}` (applications.manage; a reason is required to return).
+
+Billing uses approved timesheet hours only; `GET /admin/billing/unbilled` also returns `awaitingTimesheet`.
+
+## Reviews, reliability and disputes
+Professional, under `/professionals/me`: `GET /reviews` (to review, written, received, own rating, reliability), `POST /assignments/:id/review` `{rating 1-5, comment?}`, `POST /reviews/:id/dispute` `{reason}`.
+
+Facility, under `/organizations/:orgId`: `GET /ratings` (applications.read), `POST /assignments/:id/review`, `POST /reviews/:id/dispute` (applications.manage). The application detail includes `track` (reliability and rating).
+
+Staff, under `/admin/reviews` (admin.support): `GET /disputes?status=open|upheld|removed`, `POST /disputes/:id/resolve` `{outcome: uphold|remove, note}`.
+
+## Analytics
+Facility: `GET /organizations/:orgId/analytics?from=YYYY-MM-DD&to=YYYY-MM-DD` (jobs.read; default last 90 days, max 366). Cost figures (`costs`) are included only for roles with billing.read; `includesCosts` says which you received.
+
+Agency: `GET /organizations/:orgId/agency/analytics?from&to` (agency.submissions.read).
+
+## AI assistant
+Facility: `GET /organizations/:orgId/assistant/status` -> `{configured}`; `POST /organizations/:orgId/assistant` `{messages: [{role: user|assistant, content}]}` (max 20 messages, 4,000 characters each, must start and end with the user; jobs.read; approved organization) -> `{reply, toolsUsed, draft, refused, incomplete}`. `draft` is a job posting proposal, never saved; post it to `POST /organizations/:orgId/jobs` to create it.
+
+Agency: the same under `/organizations/:orgId/agency/assistant` (agency.jobs.read).
+
+Returns 503 `UNAVAILABLE` when no API key is set or the provider fails, 429 after 30 requests per user per hour. Configuration: `ANTHROPIC_API_KEY`, optional `ASSISTANT_MODEL`, `ASSISTANT_EFFORT`.

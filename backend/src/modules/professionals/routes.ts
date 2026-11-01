@@ -5,7 +5,11 @@ import type { AppDeps } from '../../shared/deps.js';
 import { AppError } from '../../shared/errors.js';
 import { buildInsert, buildReplace, buildSet } from '../../shared/sql.js';
 import { audit } from '../audit/service.js';
+import { professionalAgencyRoutes } from '../agencies/routes.js';
+import { professionalReviewRoutes } from '../reviews/routes.js';
+import { professionalTimesheetRoutes } from '../timesheets/routes.js';
 import { professionalApplicationRoutes } from '../applications/routes.js';
+import { shiftOfferProfessionalRoutes } from '../applications/shift-offers-routes.js';
 import { professionalTalentRoutes } from '../talent/routes.js';
 import { credentialSummary } from '../credentials/labels.js';
 import { credentialRoutes } from '../credentials/routes.js';
@@ -160,6 +164,10 @@ export function professionalRoutes(deps: AppDeps, needAuth: RequestHandler) {
 
   r.use('/me/credentials', credentialRoutes(deps));
   r.use('/me/applications', professionalApplicationRoutes(deps));
+  r.use('/me', professionalAgencyRoutes(deps));
+  r.use('/me', professionalTimesheetRoutes(deps));
+  r.use('/me', professionalReviewRoutes(deps));
+  r.use('/me', shiftOfferProfessionalRoutes(deps));
   r.use('/me', professionalTalentRoutes(deps));
   return r;
 }

@@ -3,12 +3,13 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { Alert, ApplicationStatusBadge, DataTable, EmptyState, PageHeader, Pagination, QueryBoundary, SelectField, formatDateTime, titleCase, useApi } from '@bsm/ui';
 import { useOrg } from '@/lib/org';
+import { OrgAssignmentsSection } from './shift-sections';
 
 interface A { id: string; status: string; job_id: string; title: string; applicant_name: string; created_at: string; updated_at: string }
 const STATUSES = ['submitted', 'under_review', 'shortlisted', 'interview_requested', 'interviewed', 'offer_sent', 'accepted', 'declined', 'withdrawn', 'rejected', 'cancelled'];
 
 export default function ApplicationsPage() {
-  const { org, approved } = useOrg();
+  const { org, approved, can } = useOrg();
   const [status, setStatus] = useState('');
   const [page, setPage] = useState(1);
   const list = useApi<{ applications: A[]; total: number; pageSize: number }>(approved ? `/organizations/${org.id}/applications` : null, { status, page, pageSize: 20 });
@@ -32,6 +33,7 @@ export default function ApplicationsPage() {
               </>
             )}
           </QueryBoundary>
+          <OrgAssignmentsSection orgId={org.id} canManage={can('applications.manage')} />
         </>
       )}
     </>

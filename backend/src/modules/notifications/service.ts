@@ -3,8 +3,8 @@ import type { Queryable } from '../../db/index.js';
 import type { CoreDeps } from '../../shared/deps.js';
 import { logger } from '../../shared/logger.js';
 
-export type Category = 'application_updates' | 'review_decisions' | 'support_updates';
-export const CATEGORIES: Category[] = ['application_updates', 'review_decisions', 'support_updates'];
+export type Category = 'application_updates' | 'review_decisions' | 'support_updates' | 'billing_updates';
+export const CATEGORIES: Category[] = ['application_updates', 'review_decisions', 'support_updates', 'billing_updates'];
 
 export interface NotificationInput {
   category: Category; type: string; title: string;

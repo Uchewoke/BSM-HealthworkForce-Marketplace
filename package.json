@@ -4,6 +4,10 @@
   "workspaces": ["packages/*", "backend", "apps/*"],
   "engines": { "node": ">=22" },
   "scripts": {
+    "dev": "npm run dev -w @bsm/web",
+    "dev:web": "npm run dev -w @bsm/web",
+    "dev:admin": "npm run dev -w @bsm/admin",
+    "dev:backend": "npm run dev -w @bsm/backend",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "build": "npm run build --workspaces --if-present"

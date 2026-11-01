@@ -44,6 +44,14 @@ const APP_TONE: Record<string, Tone> = {
 };
 export const ApplicationStatusBadge = ({ status }: { status: string }) => <Badge tone={APP_TONE[status] ?? 'neutral'}>{titleCase(status)}</Badge>;
 
+const SHIFT_OFFER_TONE: Record<string, Tone> = { sent: 'warning', accepted: 'success', declined: 'neutral', withdrawn: 'neutral', expired: 'neutral' };
+export const ShiftOfferStatusBadge = ({ status }: { status: string }) => <Badge tone={SHIFT_OFFER_TONE[status] ?? 'neutral'}>{titleCase(status)}</Badge>;
+
+const ASSIGNMENT_TONE: Record<string, Tone> = {
+  confirmed: 'info', completed: 'success', no_show: 'danger', cancelled_by_facility: 'danger', cancelled_by_professional: 'warning',
+};
+export const AssignmentStatusBadge = ({ status }: { status: string }) => <Badge tone={ASSIGNMENT_TONE[status] ?? 'neutral'}>{titleCase(status)}</Badge>;
+
 /* ---------- eligibility & ranking ---------- */
 
 const OUTCOME: Record<string, { tone: Tone; text: string }> = {

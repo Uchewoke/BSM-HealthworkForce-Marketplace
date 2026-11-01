@@ -1,6 +1,6 @@
 'use client';
 import { useState } from 'react';
-import { canGrantRole, FACILITY_ROLES } from '@bsm/permissions';
+import { AGENCY_ROLES, canGrantRole, FACILITY_ROLES } from '@bsm/permissions';
 import { Alert, Button, Card, ConfirmButton, DataTable, ErrorAlert, PageHeader, QueryBoundary, SelectField, TextField, formatDateTime, titleCase, useAction, useApi, useClient } from '@bsm/ui';
 import { useOrg } from '@/lib/org';
 
@@ -9,6 +9,8 @@ interface Inv { id: string; email: string; role: string; expires_at: string }
 
 const ROLE_HELP: Record<string, string> = {
   facility_owner: 'Full control. Cannot be assigned here.', facility_admin: 'Manages the organization, team and locations.', hiring_manager: 'Posts jobs and manages applicants.',
+  agency_owner: 'Full control. Cannot be assigned here.', agency_admin: 'Manages the agency, team and roster.', agency_recruiter: 'Manages the roster and submits candidates.',
+  agency_finance: 'Billing (later release).', agency_read_only: 'Can view only.',
   recruiter: 'Reviews applicants and finds professionals.', scheduler: 'Manages jobs and shifts.', finance: 'Billing (later release).', read_only: 'Can view only.',
 };
 
@@ -17,7 +19,8 @@ export default function TeamPage() {
   const client = useClient();
   const members = useApi<{ members: Member[] }>(`/organizations/${org.id}/members`);
   const invites = useApi<{ invitations: Inv[] }>(can('members.invite') ? `/organizations/${org.id}/invitations` : null);
-  const grantable = FACILITY_ROLES.filter((r) => r !== 'facility_owner' && canGrantRole(org.role, r));
+  const roles: readonly string[] = org.type === 'agency' ? AGENCY_ROLES : FACILITY_ROLES;
+  const grantable = roles.filter((r) => r !== 'facility_owner' && r !== 'agency_owner' && canGrantRole(org.role, r));
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<string>(grantable[0] ?? 'read_only');
   const [sent, setSent] = useState('');

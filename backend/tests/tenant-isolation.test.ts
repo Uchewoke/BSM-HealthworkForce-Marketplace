@@ -60,7 +60,7 @@ describe('tenant isolation', () => {
   it('rejects malformed ids and out-of-range input', async () => {
     expect((await api().get('/api/v1/organizations/not-a-uuid').set('Cookie', a.cookie)).status).toBe(422);
     expect((await api().post('/api/v1/organizations').set('Cookie', a.cookie).send({ name: 'x', type: 'facility' })).status).toBe(422);
-    expect((await api().post('/api/v1/organizations').set('Cookie', a.cookie).send({ name: 'Valid Name', type: 'agency' })).status).toBe(422);
+    expect((await api().post('/api/v1/organizations').set('Cookie', a.cookie).send({ name: 'Valid Name', type: 'hospital' })).status).toBe(422);
   });
 });
 

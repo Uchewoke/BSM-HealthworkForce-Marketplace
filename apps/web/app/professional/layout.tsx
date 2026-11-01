@@ -6,7 +6,7 @@ const ITEMS = [
   { href: '/professional', label: 'Overview', exact: true }, { href: '/professional/profile', label: 'Profile & visibility' },
   { href: '/professional/history', label: 'Education & experience' }, { href: '/professional/credentials', label: 'Licenses & certifications' },
   { href: '/professional/availability', label: 'Availability & preferences' }, { href: '/professional/jobs', label: 'Find jobs' },
-  { href: '/professional/applications', label: 'My applications' }, { href: '/professional/invitations', label: 'Invitations' },
+  { href: '/professional/applications', label: 'My applications' }, { href: '/professional/timesheets', label: 'Timesheets' }, { href: '/professional/reviews', label: 'Reviews & reliability' }, { href: '/professional/invitations', label: 'Invitations' }, { href: '/professional/agencies', label: 'Staffing agencies' },
 ];
 
 export default function ProfessionalLayout({ children }: { children: ReactNode }) {

@@ -53,7 +53,10 @@ export async function evaluateMatch(q: Queryable, args: {
   const conflicts = (await q.query<any>(
     `SELECT s.starts_at, s.ends_at FROM application_shifts a JOIN applications app ON app.id = a.application_id
        JOIN shifts s ON s.id = a.shift_id
-      WHERE app.professional_id = $1 AND app.status = 'accepted' AND ($2::uuid IS NULL OR app.id <> $2::uuid)`,
+      WHERE app.professional_id = $1 AND app.status = 'accepted' AND ($2::uuid IS NULL OR app.id <> $2::uuid)
+     UNION ALL
+     SELECT s.starts_at, s.ends_at FROM assignments asg JOIN shifts s ON s.id = asg.shift_id
+      WHERE asg.professional_id = $1 AND asg.status = 'confirmed'`,
     [args.professionalId, args.excludeApplicationId ?? null])).map((s) => ({ startsAt: new Date(s.starts_at), endsAt: new Date(s.ends_at) }));
 
   const eligibility = evaluateEligibility({

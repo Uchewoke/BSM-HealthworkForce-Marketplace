@@ -1,7 +1,7 @@
 'use client';
 import { Badge, Card, EmptyState, LinkButton, Loading, OrgStatusBadge, PageHeader, RequireAuth, useApi } from '@bsm/ui';
 
-interface Org { id: string; name: string; status: string; role: string }
+interface Org { id: string; name: string; type: string; status: string; role: string }
 
 function Dashboard() {
   const orgs = useApi<{ organizations: Org[] }>('/organizations');
@@ -24,14 +24,14 @@ function Dashboard() {
             <EmptyState title="No professional profile yet" action={<LinkButton href="/professional">Create your profile</LinkButton>}>Create one to add credentials, search jobs and apply.</EmptyState>
           ) : <Loading />}
         </Card>
-        <Card title="As a facility team member">
+        <Card title="As a facility or agency team member">
           {orgs.loading && !orgs.data ? <Loading /> : orgs.data && orgs.data.organizations.length > 0 ? (
             <ul style={{ paddingLeft: 18 }}>
               {orgs.data.organizations.map((o) => (
-                <li key={o.id}><a href={`/facility/${o.id}`}>{o.name}</a> <OrgStatusBadge status={o.status} /> <span className="muted small">({o.role.replace(/_/g, ' ')})</span></li>
+                <li key={o.id}><a href={`/${o.type === 'agency' ? 'agency' : 'facility'}/${o.id}`}>{o.name}</a> <OrgStatusBadge status={o.status} /> <span className="muted small">({o.role.replace(/_/g, ' ')})</span></li>
               ))}
             </ul>
-          ) : <EmptyState title="No organizations yet" action={<LinkButton href="/facility">Register a facility</LinkButton>}>Register your organization, or accept an invitation from your team.</EmptyState>}
+          ) : <EmptyState title="No organizations yet" action={<><LinkButton href="/facility">Register a facility</LinkButton> <LinkButton href="/agency" tone="secondary">Register an agency</LinkButton></>}>Register your organization, or accept an invitation from your team.</EmptyState>}
         </Card>
       </div>
     </>

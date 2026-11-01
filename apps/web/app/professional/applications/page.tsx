@@ -2,15 +2,19 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { ApplicationStatusBadge, DataTable, EmptyState, LinkButton, PageHeader, Pagination, QueryBoundary, formatDateTime, titleCase, useApi } from '@bsm/ui';
+import { AssignmentsSection, ShiftOffersSection } from './shift-sections';
 
 interface A { id: string; status: string; title: string; employment_type: string; organization_name: string; city: string; state: string; updated_at: string }
 
 export default function ApplicationsPage() {
   const [page, setPage] = useState(1);
+  const [version, setVersion] = useState(0);
   const list = useApi<{ applications: A[]; total: number; pageSize: number }>('/professionals/me/applications', { page });
   return (
     <>
       <PageHeader title="My applications" />
+      <ShiftOffersSection onChanged={() => setVersion((v) => v + 1)} />
+      <AssignmentsSection key={version} />
       <QueryBoundary state={list}>
         {(d) => d.applications.length === 0 ? <EmptyState title="You haven’t applied to anything yet" action={<LinkButton href="/professional/jobs">Find jobs</LinkButton>} /> : (
           <>

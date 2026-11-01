@@ -10,6 +10,7 @@ import { notifyUsers, orgUserIdsWithPermission } from '../notifications/service.
 import { ORG_STATUSES, transitionOrganization } from '../organizations/status.js';
 
 const queueQuery = z.object({
+  type: z.enum(['facility', 'agency']).default('facility'),
   status: z.enum(ORG_STATUSES).default('submitted'),
   page: z.coerce.number().int().min(1).max(10_000).default(1),
   pageSize: z.coerce.number().int().min(1).max(50).default(20),
@@ -41,11 +42,11 @@ export function adminRoutes(deps: AppDeps, needAuth: RequestHandler) {
   // ---- facility review queue
   r.get('/organizations', review, async (req, res) => {
     const q = queueQuery.parse(req.query); // sort/order come from allowlisted enums
-    const [countRow] = await db.query<{ count: string }>(`SELECT count(*) FROM organizations WHERE type = 'facility' AND status = $1`, [q.status]);
+    const [countRow] = await db.query<{ count: string }>(`SELECT count(*) FROM organizations WHERE type = $1 AND status = $2`, [q.type, q.status]);
     const rows = await db.query(
       `SELECT id, name, legal_name, state, status, created_at, updated_at FROM organizations
-        WHERE type = 'facility' AND status = $1 ORDER BY ${q.sort} ${q.order}, id LIMIT $2 OFFSET $3`,
-      [q.status, q.pageSize, (q.page - 1) * q.pageSize]);
+        WHERE type = $1 AND status = $2 ORDER BY ${q.sort} ${q.order}, id LIMIT $3 OFFSET $4`,
+      [q.type, q.status, q.pageSize, (q.page - 1) * q.pageSize]);
     res.json({ organizations: rows, page: q.page, pageSize: q.pageSize, total: Number(countRow?.count ?? 0) });
   });
 

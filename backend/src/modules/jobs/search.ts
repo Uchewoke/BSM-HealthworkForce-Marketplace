@@ -2,6 +2,7 @@ import { Router, type RequestHandler } from 'express';
 import { param, validate } from '../../middleware/http.js';
 import type { AppDeps } from '../../shared/deps.js';
 import { AppError } from '../../shared/errors.js';
+import { organizationRating as orgRating } from '../reviews/service.js';
 import { params, searchQuery } from './schemas.js';
 
 /**
@@ -83,7 +84,9 @@ export function jobSearchRoutes(deps: AppDeps, needAuth: RequestHandler) {
       'SELECT kind, credential_type, jurisdiction, description, mandatory FROM job_requirements WHERE job_id = $1 ORDER BY mandatory DESC, created_at, id', [id]);
     const shifts = await db.query(
       `SELECT id, starts_at, ends_at, positions, hourly_rate_cents, notes FROM shifts WHERE job_id = $1 AND status = 'open' AND starts_at > now() ORDER BY starts_at LIMIT 100`, [id]);
-    res.json({ job, requirements, shifts });
+    const [owner] = await db.query<{ organization_id: string }>('SELECT organization_id FROM jobs WHERE id = $1', [id]);
+    const organizationRating = owner ? await orgRating(db, owner.organization_id) : null;
+    res.json({ job, requirements, shifts, organizationRating });
   });
 
   return r;

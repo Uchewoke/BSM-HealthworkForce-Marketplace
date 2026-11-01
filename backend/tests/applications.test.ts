@@ -331,7 +331,7 @@ describe('notifications', () => {
     const put = await api().put('/api/v1/notifications/preferences').set('Cookie', pro3.cookie).send({ preferences: [{ category: 'review_decisions', emailEnabled: false }] });
     expect(put.status).toBe(200);
     const prefs = (await api().get('/api/v1/notifications/preferences').set('Cookie', pro3.cookie)).body.preferences;
-    expect(prefs).toEqual([{ category: 'application_updates', emailEnabled: true }, { category: 'review_decisions', emailEnabled: false }, { category: 'support_updates', emailEnabled: true }]);
+    expect(prefs).toEqual([{ category: 'application_updates', emailEnabled: true }, { category: 'review_decisions', emailEnabled: false }, { category: 'support_updates', emailEnabled: true }, { category: 'billing_updates', emailEnabled: true }]);
     const before = ctx.email.messages.length;
     const credId = await addCredential(pro3, { ...LICENSE, credentialType: 'RN (pref)' }, 'pending');
     await decideCred(credId, 'pending_review');

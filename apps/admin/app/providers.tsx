@@ -10,6 +10,8 @@ const TOOLS: (NavItem & { permission?: Permission })[] = [
   { href: '/organizations', label: 'Facility review', permission: 'admin.facility_review' },
   { href: '/credentials', label: 'Credential review', permission: 'admin.credential_review' },
   { href: '/jobs', label: 'Marketplace', permission: 'admin.marketplace_oversight' },
+  { href: '/billing', label: 'Billing', permission: 'admin.billing_manage' },
+  { href: '/reviews', label: 'Review disputes', permission: 'admin.support' },
   { href: '/users', label: 'Users', permission: 'admin.user_lookup' },
   { href: '/support', label: 'Support', permission: 'admin.support' },
   { href: '/audit', label: 'Audit log', permission: 'admin.audit_read' },

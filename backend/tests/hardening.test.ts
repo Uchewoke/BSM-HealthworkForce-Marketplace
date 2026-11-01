@@ -83,6 +83,10 @@ describe('every protected endpoint rejects anonymous callers', () => {
     ['get', '/admin/organizations'], ['get', `/admin/organizations/${ID}`], ['post', `/admin/organizations/${ID}/status`], ['get', '/admin/credentials'], ['post', `/admin/credentials/${ID}/status`],
     ['get', '/admin/jobs'], ['get', '/admin/states'], ['put', '/admin/states/GA'], ['get', '/admin/metrics'], ['get', '/admin/settings/ranking-weights'],
     ['post', '/admin/taxonomies/professions'], ['get', '/admin/support/tickets'],
+    ['get', `/organizations/${ID}/shift-offers`], ['post', `/organizations/${ID}/applications/${ID}/shift-offers`], ['post', `/organizations/${ID}/shift-offers/${ID}/withdraw`],
+    ['get', `/organizations/${ID}/assignments`], ['get', `/organizations/${ID}/assignments/${ID}`], ['post', `/organizations/${ID}/assignments/${ID}/status`],
+    ['get', '/professionals/me/shift-offers'], ['get', `/professionals/me/shift-offers/${ID}`], ['post', `/professionals/me/shift-offers/${ID}/respond`],
+    ['get', '/professionals/me/assignments'], ['get', `/professionals/me/assignments/${ID}`], ['post', `/professionals/me/assignments/${ID}/cancel`],
   ];
   it.each(routes)('%s /api/v1%s → 401', async (method, path) => {
     const ctx = shared ?? (shared = await makeTestApp());

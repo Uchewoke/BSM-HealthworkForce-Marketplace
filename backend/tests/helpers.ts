@@ -3,6 +3,7 @@ import request from 'supertest';
 import { createApp } from '../src/app.js';
 import { loadConfig } from '../src/config/env.js';
 import { createPgliteDb, migrate, type Db } from '../src/db/index.js';
+import { NotConfiguredAssistant, type AssistantProvider } from '../src/integrations/assistant.js';
 import { OutboxEmailSender } from '../src/integrations/email.js';
 import type { MalwareScanner } from '../src/integrations/malware.js';
 import { MemoryStorage } from '../src/integrations/storage.js';
@@ -18,7 +19,7 @@ export class StubScanner implements MalwareScanner {
   async scan(bytes: Buffer) { return bytes.includes('EICAR-TEST') ? ('infected' as const) : ('not_scanned' as const); }
 }
 
-export async function makeTestApp(opts: Pick<AppDeps, 'logger' | 'globalLimit'> & { db?: Db } = {}) {
+export async function makeTestApp(opts: Pick<AppDeps, 'logger' | 'globalLimit'> & { db?: Db; assistant?: AssistantProvider } = {}) {
   const db = opts.db ?? await createPgliteDb();
   await migrate(db);
   const email = new OutboxEmailSender();
@@ -28,7 +29,7 @@ export async function makeTestApp(opts: Pick<AppDeps, 'logger' | 'globalLimit'> 
     MFA_ENCRYPTION_KEY: randomBytes(32).toString('base64'),
     FIELD_ENCRYPTION_KEY: randomBytes(32).toString('base64'),
   } as NodeJS.ProcessEnv);
-  const deps: AppDeps = { db, config, email, storage, scanner: new StubScanner(), logger: opts.logger, globalLimit: opts.globalLimit };
+  const deps: AppDeps = { db, config, email, storage, scanner: new StubScanner(), assistant: opts.assistant ?? new NotConfiguredAssistant(), logger: opts.logger, globalLimit: opts.globalLimit };
   const app = createApp(deps);
   const svc = createAuthService(deps);
 

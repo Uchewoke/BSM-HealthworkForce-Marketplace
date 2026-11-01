@@ -6,6 +6,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   application_updates: 'Applications, offers and invitations',
   review_decisions: 'Review decisions about my organization, credentials or listings',
   support_updates: 'Replies to my support requests',
+  billing_updates: 'Invoices and payments',
 };
 
 function Preferences() {

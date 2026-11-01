@@ -1,5 +1,5 @@
 import { Router, type RequestHandler } from 'express';
-import { canGrantRole, FACILITY_ROLES } from '@bsm/permissions';
+import { AGENCY_ROLES, canGrantRole, FACILITY_ROLES } from '@bsm/permissions';
 import { z } from 'zod';
 import { requireOrgPermission } from '../../middleware/access.js';
 import { param, validate } from '../../middleware/http.js';
@@ -10,7 +10,7 @@ import { audit } from '../audit/service.js';
 import { emailSchema } from '../auth/schemas.js';
 
 const INVITE_TTL_MS = 7 * 24 * 3600_000;
-const inviteBody = z.object({ email: emailSchema, role: z.enum(FACILITY_ROLES).exclude(['facility_owner']) });
+const inviteBody = z.object({ email: emailSchema, role: z.enum([...FACILITY_ROLES, ...AGENCY_ROLES]).exclude(['facility_owner', 'agency_owner']) });
 const orgParams = z.object({ orgId: z.uuid() });
 const inviteParams = z.object({ orgId: z.uuid(), invitationId: z.uuid() });
 const acceptBody = z.object({ token: z.string().min(20).max(200) });
@@ -35,9 +35,12 @@ export function invitationRoutes(deps: AppDeps) {
     if (!canGrantRole(req.membership!.role, role)) {
       throw new AppError('FORBIDDEN', 'You cannot invite someone with more permissions than your own.');
     }
-    const [org] = await db.query<{ name: string; status: string }>('SELECT name, status FROM organizations WHERE id = $1', [orgId]);
+    const [org] = await db.query<{ name: string; status: string; type: string }>('SELECT name, status, type FROM organizations WHERE id = $1', [orgId]);
     if (!org || ['rejected', 'suspended'].includes(org.status)) {
       throw new AppError('FORBIDDEN', 'This organization cannot invite members in its current status.', { organizationStatus: org?.status });
+    }
+    if (!(org.type === 'agency' ? AGENCY_ROLES : FACILITY_ROLES).includes(role as never)) {
+      throw new AppError('VALIDATION_FAILED', 'This role does not apply to this type of organization.', { fieldErrors: { role: ['Invalid role'] } });
     }
     const [member] = await db.query(
       `SELECT 1 FROM organization_members m JOIN users u ON u.id = m.user_id

@@ -21,9 +21,10 @@ export const PERMISSIONS = [
   'applications.read', 'applications.manage',
   'professionals.search',
   'billing.read',
+  'agency.roster.read', 'agency.roster.manage', 'agency.jobs.read', 'agency.submissions.read', 'agency.submissions.manage',
   'admin.facility_review', 'admin.credential_review', 'admin.user_lookup',
   'admin.audit_read', 'admin.taxonomy_manage', 'admin.settings_manage', 'admin.support',
-  'admin.marketplace_oversight', 'admin.user_manage',
+  'admin.marketplace_oversight', 'admin.user_manage', 'admin.billing_manage',
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 
@@ -32,6 +33,10 @@ const manager: Permission[] = [
   ...readOnly, 'jobs.manage', 'jobs.publish', 'applications.manage', 'professionals.search',
 ];
 const admin: Permission[] = [...manager, 'org.update', 'org.submit_for_review', 'members.invite', 'members.manage', 'locations.manage'];
+
+const agencyRead: Permission[] = ['org.read', 'members.read', 'agency.roster.read', 'agency.jobs.read', 'agency.submissions.read'];
+const agencyRecruiter: Permission[] = [...agencyRead, 'agency.roster.manage', 'agency.submissions.manage'];
+const agencyAdmin: Permission[] = [...agencyRecruiter, 'org.update', 'org.submit_for_review', 'members.invite', 'members.manage'];
 
 /** Organization-scoped permissions. Least privilege: absent role/permission means denied. */
 export const ORG_ROLE_PERMISSIONS: Record<OrgRole, readonly Permission[]> = {
@@ -42,21 +47,21 @@ export const ORG_ROLE_PERMISSIONS: Record<OrgRole, readonly Permission[]> = {
   scheduler: [...readOnly, 'jobs.manage'],
   finance: [...readOnly, 'billing.read'],
   read_only: readOnly,
-  // Agency permissions are reserved for Release 2; they grant only read access for now.
-  agency_owner: readOnly, agency_admin: readOnly, agency_recruiter: readOnly,
-  agency_finance: readOnly, agency_read_only: readOnly,
+  // Agency roles carry no facility permissions (jobs, locations, applications): agencies only see what a facility grants them.
+  agency_owner: [...agencyAdmin, 'billing.read'], agency_admin: agencyAdmin, agency_recruiter: agencyRecruiter,
+  agency_finance: [...agencyRead, 'billing.read'], agency_read_only: agencyRead,
 };
 
 /** Platform permissions are explicit and never implied by organization roles. */
 export const PLATFORM_ROLE_PERMISSIONS: Record<PlatformRole, readonly Permission[]> = {
   platform_super_admin: [
     'admin.facility_review', 'admin.credential_review', 'admin.user_lookup', 'admin.audit_read',
-    'admin.taxonomy_manage', 'admin.settings_manage', 'admin.support', 'admin.marketplace_oversight', 'admin.user_manage',
+    'admin.taxonomy_manage', 'admin.settings_manage', 'admin.support', 'admin.marketplace_oversight', 'admin.user_manage', 'admin.billing_manage',
   ],
   platform_admin: ['admin.facility_review', 'admin.user_lookup', 'admin.taxonomy_manage', 'admin.support', 'admin.marketplace_oversight', 'admin.user_manage'],
   verification_reviewer: ['admin.facility_review', 'admin.credential_review'],
   support_agent: ['admin.user_lookup', 'admin.support'],
-  finance_admin: ['admin.user_lookup'],
+  finance_admin: ['admin.user_lookup', 'admin.billing_manage'],
   auditor: ['admin.audit_read'],
 };
 

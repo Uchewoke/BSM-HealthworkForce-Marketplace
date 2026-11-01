@@ -6,6 +6,7 @@ import {
   Alert, Badge, Button, Card, CheckField, ConfirmButton, DataTable, ErrorAlert, JobStatusBadge, LinkButton, PageHeader, QueryBoundary, SelectField, TextArea, TextField, Timeline,
   US_STATE_CODES, formatDateTime, titleCase, useAction, useApi, useClient, zonedTimeToIso,
 } from '@bsm/ui';
+import { AgencyAccess } from '@/components/AgencyAccess';
 import { JobForm, type JobData } from '@/components/JobForm';
 import { useLocations, useOrg } from '@/lib/org';
 
@@ -162,6 +163,7 @@ export default function JobManagePage() {
                 <Shifts orgId={org.id} d={d} reload={state.reload} />
               </>
             ) : <Alert tone="info">Your role can view this job but not change it.</Alert>}
+            {can('jobs.read') && <AgencyAccess orgId={org.id} jobId={d.job.id} canManage={can('jobs.manage')} published={d.job.status === 'published'} />}
             <Card title="History"><Timeline items={d.history.map((h, i) => ({ key: String(i), at: h.created_at, title: h.from_status ? `${titleCase(h.from_status)} → ${titleCase(h.to_status)}` : `Created as ${titleCase(h.to_status)}`, detail: h.reason ?? undefined }))} /></Card>
           </>
         )}

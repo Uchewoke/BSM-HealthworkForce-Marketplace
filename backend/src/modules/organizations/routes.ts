@@ -1,5 +1,5 @@
 import { Router, type RequestHandler } from 'express';
-import { canGrantRole, FACILITY_ROLES } from '@bsm/permissions';
+import { AGENCY_ROLES, canGrantRole, FACILITY_ROLES } from '@bsm/permissions';
 import { z } from 'zod';
 import { requireOrgPermission } from '../../middleware/access.js';
 import { validate } from '../../middleware/http.js';
@@ -10,14 +10,21 @@ import { audit } from '../audit/service.js';
 import { emailSchema } from '../auth/schemas.js';
 import { facilityRoutes } from '../facilities/routes.js';
 import { invitationRoutes } from '../invitations/routes.js';
+import { agencyRoutes, facilityAgencyRoutes } from '../agencies/routes.js';
+import { agencyAnalyticsRoutes, facilityAnalyticsRoutes } from '../analytics/routes.js';
+import { agencyAssistantRoutes, facilityAssistantRoutes } from '../assistant/routes.js';
+import { orgBillingRoutes } from '../billing/routes.js';
+import { facilityReviewRoutes } from '../reviews/routes.js';
+import { facilityTimesheetRoutes } from '../timesheets/routes.js';
 import { applicationFacilityRoutes } from '../applications/routes.js';
+import { shiftOfferFacilityRoutes } from '../applications/shift-offers-routes.js';
 import { jobRoutes } from '../jobs/routes.js';
 import { talentRoutes } from '../talent/routes.js';
 import { transitionOrganization } from './status.js';
 
 const createBody = z.object({
   name: z.string().trim().min(2).max(160),
-  type: z.literal('facility'), // agency onboarding ships in Release 2
+  type: z.enum(['facility', 'agency']),
 });
 const profileBody = z.object({
   name: z.string().trim().min(2).max(160),
@@ -29,7 +36,7 @@ const profileBody = z.object({
 }).partial().refine((b) => Object.keys(b).length > 0, 'Provide at least one field.');
 const orgParams = z.object({ orgId: z.uuid() });
 const memberParams = z.object({ orgId: z.uuid(), memberId: z.uuid() });
-const roleBody = z.object({ role: z.enum(FACILITY_ROLES).exclude(['facility_owner']) });
+const roleBody = z.object({ role: z.enum([...FACILITY_ROLES, ...AGENCY_ROLES]).exclude(['facility_owner', 'agency_owner']) });
 
 const PROFILE_COLUMNS = {
   name: 'name', legalName: 'legal_name', contactEmail: 'contact_email', contactPhone: 'contact_phone', website: 'website', state: 'state',
@@ -55,11 +62,12 @@ export function organizationRoutes(deps: AppDeps, needAuth: RequestHandler) {
       const [o] = await tx.query<{ id: string; name: string; type: string; status: string }>(
         'INSERT INTO organizations (name, type, created_by) VALUES ($1,$2,$3) RETURNING id, name, type, status',
         [req.body.name, req.body.type, req.auth!.userId]);
-      await tx.query(`INSERT INTO organization_members (organization_id, user_id, role) VALUES ($1,$2,'facility_owner')`, [o!.id, req.auth!.userId]);
+      const ownerRole = req.body.type === 'agency' ? 'agency_owner' : 'facility_owner';
+      await tx.query(`INSERT INTO organization_members (organization_id, user_id, role) VALUES ($1,$2,$3)`, [o!.id, req.auth!.userId, ownerRole]);
       await audit(tx, { actorUserId: req.auth!.userId, action: 'organization.created', targetType: 'organization', targetId: o!.id, organizationId: o!.id, requestId: req.requestId });
       return o!;
     });
-    res.status(201).json({ organization: { ...org, role: 'facility_owner' } });
+    res.status(201).json({ organization: { ...org, role: org.type === 'agency' ? 'agency_owner' : 'facility_owner' } });
   });
 
   r.get('/:orgId', validate({ params: orgParams }), requireOrgPermission(deps, 'org.read'), async (req, res) => {
@@ -123,6 +131,8 @@ export function organizationRoutes(deps: AppDeps, needAuth: RequestHandler) {
   r.patch('/:orgId/members/:memberId', validate({ params: memberParams, body: roleBody }), requireOrgPermission(deps, 'members.manage'), async (req, res) => {
     const { orgId, target } = await loadManageableMember(req);
     if (!canGrantRole(req.membership!.role, req.body.role)) throw new AppError('FORBIDDEN', 'You cannot assign a role with more permissions than your own.');
+    const [orgRow] = await db.query<{ type: string }>('SELECT type FROM organizations WHERE id = $1', [orgId]);
+    if (!(orgRow?.type === 'agency' ? AGENCY_ROLES : FACILITY_ROLES).includes(req.body.role as never)) throw new AppError('VALIDATION_FAILED', 'This role does not apply to this type of organization.', { fieldErrors: { role: ['Invalid role'] } });
     await db.query('UPDATE organization_members SET role = $2 WHERE id = $1', [target.id, req.body.role]);
     await audit(db, { actorUserId: req.auth!.userId, action: 'member.role_changed', targetType: 'organization_member', targetId: target.id, organizationId: orgId, requestId: req.requestId, metadata: { from: target.role, to: req.body.role } });
     res.json({ member: { id: target.id, role: req.body.role } });
@@ -136,9 +146,19 @@ export function organizationRoutes(deps: AppDeps, needAuth: RequestHandler) {
   });
 
   r.use('/:orgId/invitations', invitationRoutes(deps));
+  r.use('/:orgId/agency/analytics', agencyAnalyticsRoutes(deps));
+  r.use('/:orgId/agency/assistant', agencyAssistantRoutes(deps));
+  r.use('/:orgId/assistant', facilityAssistantRoutes(deps));
+  r.use('/:orgId/analytics', facilityAnalyticsRoutes(deps));
+  r.use('/:orgId/agency', agencyRoutes(deps));
+  r.use('/:orgId/billing', orgBillingRoutes(deps));
+  r.use('/:orgId', facilityAgencyRoutes(deps));
   r.use('/:orgId/facilities', facilityRoutes(deps));
   r.use('/:orgId/jobs', jobRoutes(deps));
   r.use('/:orgId/talent', talentRoutes(deps));
   r.use('/:orgId', applicationFacilityRoutes(deps));
+  r.use('/:orgId', shiftOfferFacilityRoutes(deps));
+  r.use('/:orgId', facilityTimesheetRoutes(deps));
+  r.use('/:orgId', facilityReviewRoutes(deps));
   return r;
 }

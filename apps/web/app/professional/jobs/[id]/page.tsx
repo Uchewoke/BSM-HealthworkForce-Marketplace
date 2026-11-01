@@ -7,11 +7,13 @@ import {
   formatDateTime, formatPay, titleCase, useAction, useApi, useClient, type EligibilityData,
 } from '@bsm/ui';
 import type { JobSummary } from '../page';
+import { RatingText, type RatingSummary } from '@/components/Reviews';
 
 interface Detail {
   job: JobSummary & { description: string; positions_count: number; min_years_experience: number | null };
   requirements: { kind: string; credential_type: string | null; jurisdiction: string | null; description: string | null; mandatory: boolean }[];
   shifts: { id: string; starts_at: string; ends_at: string; positions: number; hourly_rate_cents: number | null; notes: string | null }[];
+  organizationRating?: RatingSummary | null;
 }
 
 const reqText = (r: Detail['requirements'][number]) => r.kind === 'license' ? `${r.credential_type} license (${r.jurisdiction})` : r.kind === 'certification' ? `${r.credential_type} certification` : r.description;
@@ -77,7 +79,8 @@ export default function JobDetailPage() {
             <Card title="About this job">
               <p style={{ whiteSpace: 'pre-wrap' }}>{d.job.description}</p>
               <DefinitionList items={[
-                ['Profession', `${d.job.profession}${d.job.specialty ? ` · ${d.job.specialty}` : ''}`], ['Pay', formatPay(d.job.pay_unit, d.job.pay_min_cents, d.job.pay_max_cents)],
+                ['Profession', `${d.job.profession}${d.job.specialty ? ` · ${d.job.specialty}` : ''}`],
+                ['Rated by professionals', d.organizationRating ? <RatingText key="or" rating={d.organizationRating} who={d.job.organization_name} /> : '—'], ['Pay', formatPay(d.job.pay_unit, d.job.pay_min_cents, d.job.pay_max_cents)],
                 ['Openings', String(d.job.positions_count)], ['Minimum experience', d.job.min_years_experience != null ? `${d.job.min_years_experience} years` : 'Not stated'],
                 ['Apply by', d.job.application_deadline ? formatDateTime(d.job.application_deadline, d.job.timezone) : 'Open until filled'],
               ]} />

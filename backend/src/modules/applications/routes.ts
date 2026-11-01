@@ -11,6 +11,7 @@ import { FROM_WHERE_BASE } from '../jobs/search.js';
 import { evaluateMatch, snapshotMatch, type MatchResult } from '../matching/loader.js';
 import { notifyUsers, orgUserIdsWithPermission } from '../notifications/service.js';
 import { loadProfessional } from '../professionals/service.js';
+import { professionalRating, reliability } from '../reviews/service.js';
 import { APPLICATION_STATUSES, statusText, transitionApplication } from './service.js';
 
 const applyBody = z.object({
@@ -223,8 +224,8 @@ export function applicationFacilityRoutes(deps: AppDeps) {
   r.get('/applications/:appId', validate({ params: orgAppParams }), read, async (req, res) => {
     const [a] = await db.query<any>(
       `SELECT a.id, a.status, a.cover_note, a.created_at, a.job_id, a.professional_id, j.title AS job_title,
-              u.full_name, p.headline, p.summary, p.city, p.state, pr.name AS profession
-         FROM applications a JOIN jobs j ON j.id = a.job_id JOIN professionals p ON p.id = a.professional_id
+              u.full_name, p.headline, p.summary, p.city, p.state, pr.name AS profession, ag.name AS submitted_by_agency
+         FROM applications a LEFT JOIN organizations ag ON ag.id = a.submitted_by_agency_id JOIN jobs j ON j.id = a.job_id JOIN professionals p ON p.id = a.professional_id
          JOIN users u ON u.id = p.user_id JOIN professions pr ON pr.id = p.profession_id
         WHERE a.id = $1 AND a.organization_id = $2`, [param(req, 'appId'), orgOf(req)]);
     if (!a) throw new AppError('NOT_FOUND', 'Resource not found.');
@@ -247,6 +248,8 @@ export function applicationFacilityRoutes(deps: AppDeps) {
       selectedShifts: shifts,
       eligibility: { outcome: match.eligibility.outcome, reasons: match.eligibility.reasons, requirements: match.eligibility.requirements, shifts: match.eligibility.shifts, rulesVersion: match.eligibility.rulesVersion },
       ranking: match.rank, // null unless eligible
+      // Context for a human reader only. Reliability and ratings never change eligibility or ranking.
+      track: { reliability: await reliability(db, a.professional_id), rating: await professionalRating(db, a.professional_id) },
       history,
     });
   });
