@@ -35,3 +35,23 @@ export async function profileCompleteness(q: Queryable, professionalId: string) 
     missing,
   };
 }
+
+/** Same rule as `profileCompleteness`, for many professionals in one query. Returns percent by professional id. */
+export async function profileCompletenessPercents(q: Queryable, professionalIds: string[]): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  if (!professionalIds.length) return out;
+  const rows = await q.query<Record<string, any>>(
+    `SELECT p.id,
+       EXISTS (SELECT 1 FROM professional_specialties WHERE professional_id = p.id) AS specialties,
+       (EXISTS (SELECT 1 FROM professional_experience WHERE professional_id = p.id)
+         OR EXISTS (SELECT 1 FROM professional_education WHERE professional_id = p.id)) AS work_history,
+       EXISTS (SELECT 1 FROM professional_preferences WHERE professional_id = p.id) AS preferences,
+       EXISTS (SELECT 1 FROM professional_availability WHERE professional_id = p.id) AS availability,
+       EXISTS (SELECT 1 FROM credentials WHERE professional_id = p.id) AS credentials
+     FROM professionals p WHERE p.id = ANY($1::uuid[])`, [professionalIds]);
+  for (const row of rows) {
+    const done = COMPLETENESS_SECTIONS.filter((s) => row[s]).length;
+    out.set(row.id, Math.round((done / COMPLETENESS_SECTIONS.length) * 100));
+  }
+  return out;
+}

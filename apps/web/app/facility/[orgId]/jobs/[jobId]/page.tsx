@@ -170,7 +170,7 @@ export default function JobManagePage() {
         {(d) => (
           <>
             <PageHeader title={d.job.title} subtitle={<JobStatusBadge status={d.job.status ?? 'draft'} />}
-              actions={d.job.status !== 'draft' ? <><LinkButton href={`/facility/${org.id}/jobs/${d.job.id}/candidates`}>Applicants</LinkButton><LinkButton tone="secondary" href={`/facility/${org.id}/talent?jobId=${d.job.id}`}>Find professionals</LinkButton></> : undefined} />
+              actions={d.job.status !== 'draft' ? <><LinkButton href={`/facility/${org.id}/jobs/${d.job.id}/candidates`}>Applicants</LinkButton><LinkButton tone="secondary" href={`/facility/${org.id}/talent?jobId=${d.job.id}`}>Find professionals</LinkButton><LinkButton tone="secondary" href={`/facility/${org.id}/jobs/${d.job.id}/matching`}>Candidate matching</LinkButton></> : undefined} />
             {can('jobs.manage') ? (
               <>
                 <Lifecycle orgId={org.id} d={d} reload={state.reload} />

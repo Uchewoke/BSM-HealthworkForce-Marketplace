@@ -8,7 +8,7 @@ import { RateLimiter } from '../../shared/rate-limit.js';
 import { audit } from '../audit/service.js';
 import { statusLabel } from '../credentials/labels.js';
 import { FROM_WHERE_BASE } from '../jobs/search.js';
-import { evaluateMatch, type MatchResult } from '../matching/loader.js';
+import { evaluateMatches } from '../matching/loader.js';
 import { experienceYears } from '../matching/eligibility.js';
 import { notifyUsers } from '../notifications/service.js';
 import { loadProfessional } from '../professionals/service.js';
@@ -121,8 +121,7 @@ export function talentRoutes(deps: AppDeps) {
     if (q.minYears !== undefined) cards = cards.filter((c) => c.yearsExperience >= q.minYears!);
 
     if (q.jobId) {
-      const matches = new Map<string, MatchResult>();
-      for (const c of cards) matches.set(c.id, await evaluateMatch(db, { professionalId: c.id, jobId: q.jobId, shiftIds: [], now: nowDate }));
+      const matches = await evaluateMatches(db, { jobId: q.jobId, now: nowDate, candidates: cards.map((c) => ({ professionalId: c.id })) });
       for (const c of cards) {
         const m = matches.get(c.id)!;
         c.match = { outcome: m.eligibility.outcome, score: m.rank?.score ?? null, reasons: m.eligibility.reasons.map((x) => ({ code: x.code, message: x.message })) };

@@ -12,7 +12,7 @@ Status of the proposed core tables against the migrations in `backend/migrations
 | `credential_documents`, `credential_verifications` | Built (0003) | Verification is an append-only history, not a boolean |
 | `jobs`, `shifts`, `applications` | Built (0004, 0005) | Also `job_requirements`, `job_events`, `application_shifts`, `application_events` |
 | `shift_requirements` | Not built | Shifts inherit the job's requirements |
-| `shift_matches` | Built as `candidate_matches` (0005) | Decision-point match snapshots |
+| `shift_matches` | Built as `candidate_matches` (0005, extended in 0016) | Decision-point match snapshots, plus advisory run results (`run_id`, `source`, `rank`); runs are in `match_runs` (0016) |
 | `shift_offers`, `assignments`, `assignment_status_history` | Built (migration 0008, unverified until run) | Release 3a; timesheets and payments remain Release 3 |
 | `staffing_agencies`, `agency_professionals`, `client_contracts`, `candidate_submissions` | Not built | Release 2 |
 | `timesheets`, `invoices`, `payments` | Not built | Release 3 |

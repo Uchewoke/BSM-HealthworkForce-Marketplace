@@ -8,7 +8,7 @@ import { RateLimiter } from '../../shared/rate-limit.js';
 import { audit } from '../audit/service.js';
 import { statusLabel } from '../credentials/labels.js';
 import { FROM_WHERE_BASE } from '../jobs/search.js';
-import { evaluateMatch, snapshotMatch, type MatchResult } from '../matching/loader.js';
+import { evaluateMatch, evaluateMatches, snapshotMatch, type MatchResult } from '../matching/loader.js';
 import { notifyUsers, orgUserIdsWithPermission } from '../notifications/service.js';
 import { loadProfessional } from '../professionals/service.js';
 import { professionalRating, reliability } from '../reviews/service.js';
@@ -180,11 +180,12 @@ export function applicationFacilityRoutes(deps: AppDeps) {
         ORDER BY a.created_at, a.id LIMIT ${MAX_CANDIDATES}`,
       q.includeClosed === 'true' ? [jobId, orgOf(req)] : [jobId, orgOf(req), CLOSED]);
     const shifts = await shiftIdsByApp(apps.map((a) => a.id));
-    const evaluated = [];
-    for (const a of apps) {
-      const m = await evaluateMatch(db, { professionalId: a.professional_id, jobId, shiftIds: shifts.get(a.id) ?? [], now: new Date(now()), excludeApplicationId: a.id });
-      evaluated.push({ a, m });
-    }
+    const matches = await evaluateMatches(db, {
+      jobId, now: new Date(now()),
+      candidates: apps.map((a) => ({ professionalId: a.professional_id, shiftIds: shifts.get(a.id) ?? [], excludeApplicationId: a.id })),
+    });
+    const evaluated = apps.map((a) => ({ a, m: matches.get(a.professional_id)! }));
+    await audit(db, { actorUserId: req.auth!.userId, action: 'application.candidates_reviewed', targetType: 'job', targetId: jobId, organizationId: orgOf(req), requestId: req.requestId, metadata: { candidates: apps.length } });
     evaluated.sort((x, y) => {
       const ox = OUTCOME_ORDER.indexOf(x.m.eligibility.outcome), oy = OUTCOME_ORDER.indexOf(y.m.eligibility.outcome);
       if (ox !== oy) return ox - oy;

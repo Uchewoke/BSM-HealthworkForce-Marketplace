@@ -23,6 +23,7 @@ import { applicationFacilityRoutes } from '../applications/routes.js';
 import { shiftOfferFacilityRoutes } from '../applications/shift-offers-routes.js';
 import { jobRoutes } from '../jobs/routes.js';
 import { talentRoutes } from '../talent/routes.js';
+import { matchRunRoutes } from '../matching/routes.js';
 import { transitionOrganization } from './status.js';
 
 const createBody = z.object({
@@ -163,6 +164,7 @@ export function organizationRoutes(deps: AppDeps, needAuth: RequestHandler) {
   r.use('/:orgId/jobs', jobRoutes(deps));
   r.use('/:orgId/talent', talentRoutes(deps));
   r.use('/:orgId', applicationFacilityRoutes(deps));
+  r.use('/:orgId', matchRunRoutes(deps));
   r.use('/:orgId', shiftOfferFacilityRoutes(deps));
   r.use('/:orgId', facilityTimesheetRoutes(deps));
   r.use('/:orgId', facilityReviewRoutes(deps));

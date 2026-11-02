@@ -34,6 +34,8 @@ Lists are paginated with `page` / `pageSize` (max 50, audit max 200) and allowli
 | `POST/PATCH/DELETE /:orgId/jobs/:jobId/shifts[/:shiftId]` | jobs.manage (+ approved) |
 | `POST /:orgId/jobs/:jobId/status` | jobs.manage; publishing/resuming needs jobs.publish |
 | `GET /:orgId/jobs/:jobId/candidates` | applications.read; eligible candidates ranked, others listed with reasons |
+| `POST /:orgId/jobs/:jobId/match-runs` body `{scope: applicants|talent|both, shiftIds?}` | professionals.search + approved org; 20 runs/hour/user; advisory ranked shortlist, stored (ADR 0008). 404 for another org's job, 409 unless published/paused |
+| `GET /:orgId/jobs/:jobId/match-runs`, `GET /:orgId/match-runs/:runId?group=eligible|all&page&pageSize` | applications.read; applicants by name, talent anonymized by `talentRef`; viewing is audited |
 | `GET /:orgId/applications`, `GET /:orgId/applications/:appId` | applications.read |
 | `POST /:orgId/applications/:appId/status` | applications.manage; offers require eligibility |
 | `POST /:orgId/applications/:appId/shift-offers` | applications.manage; shift-based offer, requires eligibility; body `shiftId`, optional `hourlyRateCents`, `message`, `expiresInHours` |
