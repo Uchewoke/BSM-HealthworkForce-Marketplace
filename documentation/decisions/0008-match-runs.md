@@ -8,7 +8,7 @@ Eligibility and ranking already existed and were used when someone applied, when
 ## Decision
 A **match run** evaluates candidates for one job and stores the result. It reuses the existing engine without changing it:
 1. Eligibility (`eligibility-v1`) decides first. Only `eligible` candidates are ranked (`ranking-v1`, configurable weights). Everyone else is listed with every reason.
-2. A run is **advisory**. It creates no application, invitation, offer or status change. People act through the existing invitation, review, offer and acceptance flows, which re-evaluate eligibility at that moment (ADR 0003).
+2. A run is **advisory**. It creates no application, invitation, offer or status change. People act through the existing invitation, review, offer and acceptance flows. Eligibility is enforced when someone applies and at every offer and acceptance (ADR 0003); an invitation itself does not check it, so an invited person who is not eligible is refused when they apply.
 3. No language model is used to score, rank or explain. Explanations are the engine's own reasons and factor notes. Credential verification stays with platform reviewers.
 4. Scope is `applicants`, `talent` or `both`. Talent follows ADR 0005: opted-in and active only, shown as a per-organization `talentRef` and an anonymized card, never identity. Anyone who opts out after a run is hidden when it is read.
 5. Results are stored in `candidate_matches` (with a `recommend` trigger and a `run_id`) and runs in `match_runs`, with the rules, ranking and weights versions. Creating and viewing a run are audited (counts and versions only, no personal data). Both tables reject updates.
@@ -22,4 +22,4 @@ A **match run** evaluates candidates for one job and stores the result. It reuse
 - **A model-written summary**: would send personal data to a provider that has not had privacy review (ASSUMPTIONS #48, #60).
 
 ## Known limits
-Results are a point-in-time snapshot. Retention is undecided (ASSUMPTIONS #60). Weights and rules still need domain and legal review (ASSUMPTIONS #24).
+Results are a point-in-time snapshot. Run results now expire under the retention policy in ADR 0009. Weights and rules still need domain and legal review (ASSUMPTIONS #24).

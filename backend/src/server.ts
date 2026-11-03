@@ -5,6 +5,7 @@ import { AnthropicAssistant } from './integrations/assistant.js';
 import { DevConsoleEmailSender } from './integrations/email.js';
 import { NotConfiguredScanner } from './integrations/malware.js';
 import { LocalFsStorage } from './integrations/storage.js';
+import { startMatchRetentionScheduler } from './modules/matching/retention.js';
 import { startShiftRecoveryScheduler } from './modules/shift-recovery/scheduler.js';
 import { logger } from './shared/logger.js';
 
@@ -38,3 +39,8 @@ createApp(deps)
 // only take part if they switched it on.
 const recoveryMinutes = Number(process.env.SHIFT_RECOVERY_INTERVAL_MINUTES ?? 5);
 if (recoveryMinutes > 0) startShiftRecoveryScheduler(deps, recoveryMinutes * 60_000);
+
+// Match-run retention cleanup runs daily (MATCH_RETENTION_INTERVAL_HOURS; 0 turns the timer off). The retention period itself is a
+// setting a super admin changes (default 90 days). A database lease keeps several API servers from running it at once.
+const retentionHours = Number(process.env.MATCH_RETENTION_INTERVAL_HOURS ?? 24);
+if (retentionHours > 0) startMatchRetentionScheduler(deps, retentionHours * 3_600_000);

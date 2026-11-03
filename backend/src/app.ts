@@ -11,6 +11,7 @@ import { adminLegalRoutes } from './modules/legal/routes.js';
 import { adminReviewRoutes } from './modules/reviews/routes.js';
 import { adminOperationsRoutes } from './modules/admin/operations.js';
 import { adminSettingsRoutes } from './modules/admin/settings.js';
+import { adminMatchRetentionRoutes } from './modules/matching/retention-routes.js';
 import { adminCredentialRoutes, adminTaxonomyRoutes, taxonomyReadRoutes } from './modules/admin/credentials.js';
 import { documentDownloadRoutes } from './modules/credentials/routes.js';
 import { professionalRoutes } from './modules/professionals/routes.js';
@@ -58,6 +59,7 @@ export function createApp(deps: AppDeps) {
   v1.use('/taxonomies', taxonomyReadRoutes(deps, needAuth));
   v1.use('/admin/taxonomies', adminTaxonomyRoutes(deps, needAuth));
   v1.use('/admin/settings', adminSettingsRoutes(deps, needAuth));
+  v1.use('/admin/match-retention', adminMatchRetentionRoutes(deps, needAuth));
   v1.use('/admin/support', adminSupportRoutes(deps, needAuth));
   v1.use('/admin/billing', adminBillingRoutes(deps, needAuth));
   v1.use('/admin/reviews', adminReviewRoutes(deps, needAuth));

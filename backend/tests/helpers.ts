@@ -1,8 +1,9 @@
 import { randomBytes } from 'node:crypto';
+import pg from 'pg';
 import request from 'supertest';
 import { createApp } from '../src/app.js';
 import { loadConfig } from '../src/config/env.js';
-import { createPgliteDb, migrate, type Db } from '../src/db/index.js';
+import { createPgDb, createPgliteDb, migrate, type Db } from '../src/db/index.js';
 import { NotConfiguredAssistant, type AssistantProvider } from '../src/integrations/assistant.js';
 import { OutboxEmailSender } from '../src/integrations/email.js';
 import type { MalwareScanner } from '../src/integrations/malware.js';
@@ -19,8 +20,26 @@ export class StubScanner implements MalwareScanner {
   async scan(bytes: Buffer) { return bytes.includes('EICAR-TEST') ? ('infected' as const) : ('not_scanned' as const); }
 }
 
+/**
+ * The embedded database by default. With TEST_DATABASE_URL set (a server where the user may create databases), every call gets its
+ * own freshly created schema on that real PostgreSQL server, so the same tests also prove behaviour on the production engine.
+ */
+export async function freshDb(): Promise<Db> {
+  const url = process.env.TEST_DATABASE_URL;
+  if (!url) return createPgliteDb();
+  // A schema per app, not a database: creating a database forces a checkpoint, which is very slow when several test files start
+  // at once. The connection's search_path points at the new schema, so the migrations land there and tests cannot see each other.
+  const name = `t_${randomBytes(6).toString('hex')}`;
+  const admin = new pg.Client({ connectionString: url });
+  await admin.connect();
+  await admin.query(`CREATE SCHEMA ${name}`);
+  await admin.end();
+  const u = new URL(url); u.searchParams.set('options', `-c search_path=${name}`);
+  return createPgDb(u.toString());
+}
+
 export async function makeTestApp(opts: Pick<AppDeps, 'logger' | 'globalLimit'> & { db?: Db; assistant?: AssistantProvider } = {}) {
-  const db = opts.db ?? await createPgliteDb();
+  const db = opts.db ?? await freshDb();
   await migrate(db);
   const email = new OutboxEmailSender();
   const storage = new MemoryStorage();

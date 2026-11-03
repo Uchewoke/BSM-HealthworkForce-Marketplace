@@ -5,7 +5,7 @@ import { useState } from 'react';
 import { Alert, ApplicationStatusBadge, Badge, Button, Card, DataTable, EligibilityBadge, EmptyState, ErrorAlert, PageHeader, Pagination, QueryBoundary, SelectField, formatDateTime, titleCase, useAction, useApi, useClient } from '@bsm/ui';
 import { useOrg } from '@/lib/org';
 
-interface Factor { key: string; label: string; weight: number; value: number; contribution: number; note: string }
+interface Factor { key: string; label: string; weight: number; value: number | null; contribution: number | null; note: string; withheld?: boolean }
 interface Result {
   resultId: string; source: 'applicant' | 'talent'; rank: number | null; score: number | null; factors: Factor[] | null;
   eligibility: { outcome: string; reasons: { code: string; message: string }[] };
@@ -55,7 +55,7 @@ function Results({ orgId, jobId, runId }: { orgId: string; jobId: string; runId:
                     </>) },
                   { header: 'Why this score', cell: (r) => (r.factors ? (
                     <details><summary>Factors</summary>
-                      <ul className="small" style={{ paddingLeft: 16 }}>{r.factors.map((f) => <li key={f.key}><strong>{f.label}</strong> ({f.weight}%): {f.contribution.toFixed(1)}. {f.note}</li>)}</ul>
+                      <ul className="small" style={{ paddingLeft: 16 }}>{r.factors.map((f) => <li key={f.key}><strong>{f.label}</strong> ({f.weight}%): {f.contribution == null ? 'not shown' : f.contribution.toFixed(1)}. {f.note}</li>)}</ul>
                     </details>) : <span className="muted small">Not ranked</span>) },
                   { header: 'Next step', cell: (r) => (r.source === 'talent' && r.eligibility.outcome !== 'ineligible' && r.talentRef ? <Invite orgId={orgId} jobId={jobId} talentRef={r.talentRef} /> : <span className="muted small">{r.source === 'applicant' ? 'Review the application' : '—'}</span>) },
                 ]} />
@@ -85,7 +85,7 @@ export default function MatchingPage() {
     <>
       <p><Link href={`/facility/${org.id}/jobs/${jobId}`}>← Back to the job</Link></p>
       <PageHeader title="Candidate matching" subtitle="A ranked shortlist for this job, with the reason behind every result." />
-      <Alert tone="info">Matching is advisory. Mandatory requirements are checked first and are never overridden by a score; only people who meet them are ranked. Nothing here sends an offer or changes an application: you decide, and eligibility is checked again at every invitation, offer and acceptance. This does not verify credentials.</Alert>
+      <Alert tone="info">Matching is advisory. Mandatory requirements are checked first and are never overridden by a score; only people who meet them are ranked. Nothing here sends an offer or changes an application: you decide, and eligibility is checked again when someone applies and at every offer and acceptance. This does not verify credentials.</Alert>
       <Card title="Run matching">
         <ErrorAlert error={start.error} />
         <form onSubmit={(e) => { e.preventDefault(); void start.run(); }} noValidate>

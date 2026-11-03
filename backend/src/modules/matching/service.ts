@@ -1,9 +1,10 @@
+import { orgRoleCan } from '@bsm/permissions';
 import type { Db } from '../../db/index.js';
 import { AppError } from '../../shared/errors.js';
 import { audit } from '../audit/service.js';
 import { talentRefFor } from '../talent/refs.js';
 import { evaluateMatches, type MatchResult } from './loader.js';
-import { RANKING_VERSION } from './ranking.js';
+import { RANKING_VERSION, facilityView } from './ranking.js';
 
 export const MAX_APPLICANTS = 500;
 export const MAX_TALENT = 300;
@@ -126,25 +127,29 @@ export async function listMatchRuns(db: Db, organizationId: string, jobId: strin
  * One page of a stored run. Applicants are shown as they are in the normal application review. Talent stays anonymized
  * (ADR 0005): a per-organization reference and a card, never identity; anyone who has since opted out is left out.
  */
-export async function readMatchRun(db: Db, input: { organizationId: string; runId: string; userId: string; requestId: string; group: 'eligible' | 'all'; page: number; pageSize: number }) {
+export async function readMatchRun(db: Db, input: { organizationId: string; role: string; runId: string; userId: string; requestId: string; group: 'eligible' | 'all'; page: number; pageSize: number }) {
   const [run] = await db.query<any>(`SELECT ${RUN_COLUMNS} FROM match_runs WHERE id = $1 AND organization_id = $2`, [input.runId, input.organizationId]);
   if (!run) throw new AppError('NOT_FOUND', 'Resource not found.');
+  // Anonymous talent needs the same standing as talent search: the permission, and an approved organization.
+  const [org] = await db.query<{ status: string }>('SELECT status FROM organizations WHERE id = $1', [input.organizationId]);
+  const includeTalent = orgRoleCan(input.role, 'professionals.search') && org?.status === 'approved';
   const visible = `m.run_id = $1 AND m.organization_id = $2 AND ($3::boolean IS FALSE OR m.outcome = 'eligible')
-                   AND (m.source = 'applicant' OR (p.discoverable AND p.account_status = 'active' AND u.status = 'active'))`;
+                   AND (m.source = 'applicant' OR ($4::boolean AND p.discoverable AND p.account_status = 'active' AND u.status = 'active'))`;
   const from = `FROM candidate_matches m JOIN professionals p ON p.id = m.professional_id JOIN users u ON u.id = p.user_id
                 JOIN professions pr ON pr.id = p.profession_id LEFT JOIN applications a ON a.id = m.application_id`;
-  const args = [input.runId, input.organizationId, input.group === 'eligible'];
+  const args = [input.runId, input.organizationId, input.group === 'eligible', includeTalent];
   const [count] = await db.query<{ n: string }>(`SELECT count(*) AS n ${from} WHERE ${visible}`, args);
   const rows = await db.query<any>(
     `SELECT m.id, m.source, m.rank, m.score, m.outcome, m.eligibility, m.explanation, m.application_id, m.professional_id,
             a.status AS application_status, u.full_name, p.headline, p.city, p.state, pr.name AS profession
        ${from} WHERE ${visible}
-      ORDER BY array_position($4::text[], m.outcome), m.rank NULLS LAST, m.id LIMIT $5 OFFSET $6`,
+      ORDER BY array_position($5::text[], m.outcome), m.rank NULLS LAST, m.id LIMIT $6 OFFSET $7`,
     [...args, [...OUTCOME_ORDER], input.pageSize, (input.page - 1) * input.pageSize]);
 
   const [all] = await db.query<{ n: string }>(`SELECT count(*) AS n FROM candidate_matches WHERE run_id = $1 AND organization_id = $2`, [input.runId, input.organizationId]);
   const total = Number(count?.n ?? 0);
-  const hiddenSinceRun = input.group === 'all' ? Number(all?.n ?? 0) - total : null;
+  // Only meaningful when talent is shown at all: it counts people who opted out since the run.
+  const hiddenSinceRun = input.group === 'all' && includeTalent ? Number(all?.n ?? 0) - total : null;
 
   const talentIds = rows.filter((r) => r.source === 'talent').map((r) => r.professional_id as string);
   const specialties = new Map<string, string[]>();
@@ -165,7 +170,7 @@ export async function readMatchRun(db: Db, input: { organizationId: string; runI
         // Credential ids stay internal: only the requirement, its result and how it was verified are shown.
         requirements: (e.requirements ?? []).map(({ credentialId: _id, ...rest }: any) => rest),
       },
-      factors: r.explanation?.factors ?? null,
+      factors: facilityView(r.explanation)?.factors ?? null,
     };
     results.push(r.source === 'applicant'
       ? { ...base, applicationId: r.application_id, applicationStatus: r.application_status, applicant: { name: r.full_name, headline: r.headline, city: r.city, state: r.state } }
@@ -175,6 +180,6 @@ export async function readMatchRun(db: Db, input: { organizationId: string; runI
   await audit(db, { actorUserId: input.userId, action: 'match.run_viewed', targetType: 'match_run', targetId: input.runId, organizationId: input.organizationId, requestId: input.requestId, metadata: { group: input.group, page: input.page } });
   return {
     run: runView(run), results, page: input.page, pageSize: input.pageSize, total, hiddenSinceRun,
-    note: 'Advisory only. Results were computed when the run was created and may be out of date: eligibility is checked again at every invitation, offer and acceptance. Only candidates with outcome "eligible" are ranked, and ranking never overrides a mandatory requirement.',
+    note: 'Advisory only. Results were computed when the run was created and may be out of date: eligibility is checked again when someone applies and at every offer and acceptance. Only candidates with outcome "eligible" are ranked, and ranking never overrides a mandatory requirement.',
   };
 }

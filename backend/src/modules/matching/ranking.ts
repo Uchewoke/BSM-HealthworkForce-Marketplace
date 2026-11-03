@@ -76,3 +76,19 @@ export function rankCandidate(input: RankInput, weights: Weights): RankResult {
   const score = Math.round(factors.reduce((a, x) => a + x.contribution, 0) * 100) / 100;
   return { score, factors, rankingVersion: RANKING_VERSION };
 }
+
+export interface FacilityFactor { key: keyof Weights; label: string; weight: number; value: number | null; contribution: number | null; note: string; withheld?: true }
+
+/**
+ * The ranking result as a facility may see it. The compensation factor compares the job's pay with the professional's own
+ * minimum, so its value, contribution and note would reveal that minimum (a facility never sees a pay expectation: ADR 0005).
+ * It is shown as considered but withheld. Scores and ordering are unchanged; this only shapes what is returned.
+ */
+export function facilityView(rank: { score: number; factors: Factor[]; rankingVersion: string } | null) {
+  if (!rank) return null;
+  const factors: FacilityFactor[] = rank.factors.map((f) => f.key === 'compensation'
+    ? { key: f.key, label: f.label, weight: f.weight, value: null, contribution: null, withheld: true as const,
+        note: 'Pay was compared with the professional\'s stated minimum. The amount is not shown to facilities.' }
+    : f);
+  return { score: rank.score, rankingVersion: rank.rankingVersion, factors };
+}

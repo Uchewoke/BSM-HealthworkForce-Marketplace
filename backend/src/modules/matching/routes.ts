@@ -22,7 +22,7 @@ const readQuery = z.object({
 /**
  * Advisory candidate matching for a job, mounted at /organizations/:orgId. Creating a run needs the same permission and an
  * approved organization as talent search; reading needs `applications.read`. Nothing here changes an application: people act
- * through the existing invitation, review, offer and acceptance endpoints, which re-check eligibility.
+ * through the existing invitation, review, offer and acceptance endpoints. Eligibility is enforced when someone applies and at every offer and acceptance; an invitation does not check it.
  */
 export function matchRunRoutes(deps: AppDeps) {
   const { db } = deps;
@@ -48,7 +48,7 @@ export function matchRunRoutes(deps: AppDeps) {
 
   r.get('/match-runs/:runId', validate({ params: runParams }), read, async (req, res) => {
     const q = readQuery.parse(req.query);
-    res.json(await readMatchRun(db, { organizationId: req.membership!.organizationId, runId: param(req, 'runId'), userId: req.auth!.userId, requestId: req.requestId, ...q }));
+    res.json(await readMatchRun(db, { organizationId: req.membership!.organizationId, role: req.membership!.role, runId: param(req, 'runId'), userId: req.auth!.userId, requestId: req.requestId, ...q }));
   });
 
   return r;

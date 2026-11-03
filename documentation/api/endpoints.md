@@ -37,6 +37,7 @@ Lists are paginated with `page` / `pageSize` (max 50, audit max 200) and allowli
 | `POST /:orgId/jobs/:jobId/match-runs` body `{scope: applicants|talent|both, shiftIds?}` | professionals.search + approved org; 20 runs/hour/user; advisory ranked shortlist, stored (ADR 0008). 404 for another org's job, 409 unless published/paused |
 | `GET /:orgId/jobs/:jobId/match-runs`, `GET /:orgId/match-runs/:runId?group=eligible|all&page&pageSize` | applications.read; applicants by name, talent anonymized by `talentRef`; viewing is audited |
 | `GET /:orgId/applications`, `GET /:orgId/applications/:appId` | applications.read |
+| Admin, `/admin/match-retention`: `GET|PUT /settings {days}`, `POST /cleanup {dryRun}`, `GET /history?kind`, `GET|PUT /holds {runIds, reason}`, `DELETE /holds/:runId`, `POST /erasure {professionalId, dryRun (default true), reference?}` | platform `admin.settings_manage` (super admin) with MFA; ADR 0009 |
 | `POST /:orgId/applications/:appId/status` | applications.manage; offers require eligibility |
 | `POST /:orgId/applications/:appId/shift-offers` | applications.manage; shift-based offer, requires eligibility; body `shiftId`, optional `hourlyRateCents`, `message`, `expiresInHours` |
 | `GET /:orgId/shift-offers` (filters `status`, `applicationId`), `POST /:orgId/shift-offers/:offerId/withdraw` | applications.read / applications.manage |

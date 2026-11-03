@@ -32,5 +32,5 @@ Status key: **Implemented & tested** · **Implemented, not independently verifie
 ## Known gaps that block a real pilot
 1. Row-level security (defence in depth) and a staging run against real PostgreSQL.
 2. Shared rate-limit store, email provider with retries, malware scanner, private object storage.
-3. Legal/privacy review (HIPAA applicability, state privacy law, retention, automated-decision rules): see `ASSUMPTIONS.md`.
+3. Legal/privacy review (HIPAA applicability, state privacy law, retention, automated-decision rules): see `ASSUMPTIONS.md`. Match-run data now expires (ADR 0009, default 90 days) and has an erasure and legal-hold path, but only for match runs: decision snapshots, applications, credentials and accounts have no retention or erasure process, and backups are not covered.
 4. Independent security review and penetration test; incident-response contacts and on-call.

@@ -9,6 +9,7 @@ import { audit } from '../audit/service.js';
 import { statusLabel } from '../credentials/labels.js';
 import { FROM_WHERE_BASE } from '../jobs/search.js';
 import { evaluateMatch, evaluateMatches, snapshotMatch, type MatchResult } from '../matching/loader.js';
+import { facilityView } from '../matching/ranking.js';
 import { notifyUsers, orgUserIdsWithPermission } from '../notifications/service.js';
 import { loadProfessional } from '../professionals/service.js';
 import { professionalRating, reliability } from '../reviews/service.js';
@@ -248,7 +249,7 @@ export function applicationFacilityRoutes(deps: AppDeps) {
         credentials: creds.map((c) => ({ ...c, status_label: statusLabel(c.effective_status, c.verification_method) })) },
       selectedShifts: shifts,
       eligibility: { outcome: match.eligibility.outcome, reasons: match.eligibility.reasons, requirements: match.eligibility.requirements, shifts: match.eligibility.shifts, rulesVersion: match.eligibility.rulesVersion },
-      ranking: match.rank, // null unless eligible
+      ranking: facilityView(match.rank), // null unless eligible; never includes the professional's pay expectation
       // Context for a human reader only. Reliability and ratings never change eligibility or ranking.
       track: { reliability: await reliability(db, a.professional_id), rating: await professionalRating(db, a.professional_id) },
       history,

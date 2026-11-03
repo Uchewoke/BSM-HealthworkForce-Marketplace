@@ -155,7 +155,7 @@ describe('creating and reading a run', () => {
     expect((await ctx.db.query<any>(`SELECT status FROM applications`))[0].status).toBe('submitted');
   });
 
-  it('lets a facility act through the existing invitation flow, which re-checks the rules', async () => {
+  it('lets a facility invite a candidate through the existing invitation flow', async () => {
     const pool = ((await read(runId)).body.results as any[]).find((r) => r.source === 'talent' && r.eligibility.outcome === 'eligible');
     const ok = await api().post(`${org(orgA)}/talent/invitations`).set('Cookie', recruiter.cookie).send({ talentRef: pool.talentRef, jobId });
     expect(ok.status).toBe(201);
@@ -234,5 +234,68 @@ describe('validation and integrity', () => {
       [runId, m.organization_id, m.job_id, m.professional_id, trigger, m.rules_version]);
     await expect(insert('recommend', null)).rejects.toThrow();
     await expect(insert('apply', null)).rejects.toThrow();
+  });
+});
+
+describe('review findings', () => {
+  // Pool member's stated minimum is 4800 cents/hour (see makePro). ADR 0005: a facility never sees a pay expectation.
+  async function hourlyJob() {
+    const [{ location_id }] = await ctx.db.query<any>('SELECT location_id FROM jobs WHERE id = $1', [jobId]);
+    const id = (await api().post(`${org(orgA)}/jobs`).set('Cookie', owner.cookie).send({
+      title: 'Hourly ICU', description: 'Critical care nursing with strong staffing ratios and orientation support.', locationId: location_id, professionId: rnId,
+      specialtyId: icuId, employmentType: 'per_diem', payUnit: 'hour', payMinCents: 3500, payMaxCents: 4000, minYearsExperience: 2 })).body.job.id as string;
+    await api().put(`${org(orgA)}/jobs/${id}/requirements`).set('Cookie', owner.cookie).send({ requirements: [{ kind: 'license', credentialType: 'RN', jurisdiction: 'GA' }] });
+    const start = new Date(Date.now() + 10 * 86_400_000); start.setUTCHours(14, 0, 0, 0);
+    const end = new Date(start.getTime() + 8 * 3_600_000);
+    await api().post(`${org(orgA)}/jobs/${id}/shifts`).set('Cookie', owner.cookie).send({ startsAt: start.toISOString(), endsAt: end.toISOString(), positions: 1, hourlyRateCents: 4000 });
+    expect((await api().post(`${org(orgA)}/jobs/${id}/status`).set('Cookie', owner.cookie).send({ to: 'published' })).status).toBe(200);
+    return id;
+  }
+
+  it('does not reveal a professional\'s pay expectation in factor details', async () => {
+    const hourly = await hourlyJob();
+    expect((await api().post(`/api/v1/jobs/${hourly}/apply`).set('Cookie', pApplicant.cookie).send({})).status).toBe(201);
+    const created = await run({ scope: 'both' }, recruiter, orgA, hourly);
+    expect(created.status).toBe(201);
+    const got = await read(created.body.run.id);
+    const raw = JSON.stringify(got.body.results);
+    expect(raw).not.toContain('4800');
+    for (const r of got.body.results as any[]) {
+      if (!r.factors) continue;
+      const pay = r.factors.find((f: any) => f.key === 'compensation');
+      expect(pay).toMatchObject({ withheld: true, value: null, contribution: null });
+    }
+    // The existing application detail page must not reveal it either.
+    const [{ id: appId }] = await ctx.db.query<any>('SELECT id FROM applications WHERE job_id = $1', [hourly]);
+    const detail = await api().get(`${org(orgA)}/applications/${appId}`).set('Cookie', recruiter.cookie);
+    expect(detail.status).toBe(200);
+    expect(JSON.stringify(detail.body)).not.toContain('4800');
+    expect(detail.body.ranking.factors).toHaveLength(7);
+  });
+
+  it('shows anonymous talent only to members who may search for talent', async () => {
+    const created = await run({ scope: 'both' });
+    const asReadOnly = await read(created.body.run.id, '', readonly);
+    expect(asReadOnly.status).toBe(200);
+    expect((asReadOnly.body.results as any[]).every((r) => r.source === 'applicant')).toBe(true);
+    expect(asReadOnly.body.total).toBe(1);
+    expect(JSON.stringify(asReadOnly.body)).not.toContain('talentRef');
+    const asRecruiter = await read(created.body.run.id);
+    expect((asRecruiter.body.results as any[]).some((r) => r.source === 'talent')).toBe(true);
+    // An organization that is no longer approved loses talent visibility on stored runs too.
+    await ctx.db.query(`UPDATE organizations SET status = 'under_review' WHERE id = $1`, [orgA]);
+    expect(((await read(created.body.run.id)).body.results as any[]).every((r) => r.source === 'applicant')).toBe(true);
+    await ctx.db.query(`UPDATE organizations SET status = 'approved' WHERE id = $1`, [orgA]);
+  });
+
+  it('loads candidates in batches: query count does not grow with the number of candidates', async () => {
+    const ids = (await ctx.db.query<{ id: string }>('SELECT id FROM professionals ORDER BY id')).map((r) => r.id);
+    expect(ids.length).toBeGreaterThanOrEqual(5);
+    const counted = () => { let n = 0; return { n: () => n, db: { query: (s: string, p?: unknown[]) => { n++; return ctx.db.query(s, p); }, exec: ctx.db.exec } as typeof ctx.db }; };
+    const one = counted(), many = counted();
+    await evaluateMatches(one.db, { jobId, now: new Date(), candidates: [{ professionalId: ids[0]! }] });
+    await evaluateMatches(many.db, { jobId, now: new Date(), candidates: ids.map((professionalId) => ({ professionalId })) });
+    expect(many.n()).toBe(one.n());
+    expect(one.n()).toBeLessThanOrEqual(14);
   });
 });
