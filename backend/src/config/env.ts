@@ -10,6 +10,10 @@ export interface AppConfig {
   mfaKey: Buffer;
   /** 32-byte key encrypting sensitive fields (credential numbers) and signing file-access URLs. */
   fieldKey: Buffer;
+  /** Master switch for subscription gating and checkout. Off: nothing is gated and checkout is unavailable. Individual organizations are then switched on one by one. */
+  billingEnabled: boolean;
+  /** Days a past-due subscription keeps its paid features before they are restricted. */
+  billingGraceDays: number;
 }
 
 const key = (name: string) =>
@@ -25,6 +29,8 @@ const schema = z.object({
   ADMIN_URL: z.url().default('http://localhost:3001'),
   MFA_ENCRYPTION_KEY: key('MFA_ENCRYPTION_KEY'),
   FIELD_ENCRYPTION_KEY: key('FIELD_ENCRYPTION_KEY'),
+  BILLING_SUBSCRIPTIONS_ENABLED: z.enum(['true', 'false']).default('false'),
+  BILLING_GRACE_DAYS: z.coerce.number().int().min(0).max(60).default(7),
 });
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -37,5 +43,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     cookieSecure: e.NODE_ENV === 'production',
     mfaKey: e.MFA_ENCRYPTION_KEY,
     fieldKey: e.FIELD_ENCRYPTION_KEY,
+    billingEnabled: e.BILLING_SUBSCRIPTIONS_ENABLED === 'true',
+    billingGraceDays: e.BILLING_GRACE_DAYS,
   };
 }

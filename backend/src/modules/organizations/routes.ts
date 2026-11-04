@@ -14,6 +14,7 @@ import { agencyRoutes, facilityAgencyRoutes } from '../agencies/routes.js';
 import { agencyAnalyticsRoutes, facilityAnalyticsRoutes } from '../analytics/routes.js';
 import { agencyAssistantRoutes, facilityAssistantRoutes } from '../assistant/routes.js';
 import { orgBillingRoutes } from '../billing/routes.js';
+import { subscriptionRoutes } from '../billing/subscription-routes.js';
 import { facilityExchangeRoutes } from '../exchange/routes.js';
 import { forecastRoutes } from '../forecast/routes.js';
 import { shiftRecoveryRoutes } from '../shift-recovery/routes.js';
@@ -158,6 +159,7 @@ export function organizationRoutes(deps: AppDeps, needAuth: RequestHandler) {
   r.use('/:orgId/exchange', facilityExchangeRoutes(deps));
   r.use('/:orgId/shift-recovery', shiftRecoveryRoutes(deps));
   r.use('/:orgId/agency', agencyRoutes(deps));
+  r.use('/:orgId/billing', subscriptionRoutes(deps));
   r.use('/:orgId/billing', orgBillingRoutes(deps));
   r.use('/:orgId', facilityAgencyRoutes(deps));
   r.use('/:orgId/facilities', facilityRoutes(deps));

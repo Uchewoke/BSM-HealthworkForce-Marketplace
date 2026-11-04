@@ -1,6 +1,7 @@
 'use client';
 import { useParams } from 'next/navigation';
 import type { ReactNode } from 'react';
+import { orgRoleCan } from '@bsm/permissions';
 import { Alert, OrgStatusBadge, QueryBoundary, RequireAuth, SideNav, useApi } from '@bsm/ui';
 import { OrgProvider, type Org } from '@/lib/org';
 
@@ -23,7 +24,7 @@ function Inner({ orgId, children }: { orgId: string; children: ReactNode }) {
                   {d.organization.status === 'submitted' || d.organization.status === 'under_review' ? 'Your agency is being reviewed by BSM. Inviting professionals and submitting candidates unlock once it is approved.' : `This agency is ${d.organization.status}. See the overview for details.`}
                 </Alert>
               )}
-              <div className="layout-2"><SideNav label="Agency" items={items} /><div>{children}</div></div>
+              <div className="layout-2"><SideNav label="Agency" items={orgRoleCan(d.organization.role, 'billing.read') ? [...items, { href: `${base}/subscription`, label: 'Subscription' }] : items} /><div>{children}</div></div>
             </>
           )}
         </OrgProvider>

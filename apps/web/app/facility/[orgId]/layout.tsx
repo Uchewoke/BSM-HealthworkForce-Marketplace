@@ -12,7 +12,7 @@ function Inner({ orgId, children }: { orgId: string; children: ReactNode }) {
     { href: base, label: 'Overview', exact: true }, { href: `${base}/settings`, label: 'Organization profile' }, { href: `${base}/locations`, label: 'Locations & departments' },
     { href: `${base}/team`, label: 'Team & invitations' }, { href: `${base}/jobs`, label: 'Jobs & shifts' }, { href: `${base}/applications`, label: 'Applications' }, { href: `${base}/timesheets`, label: 'Timesheets' }, { href: `${base}/ratings`, label: 'Reviews' }, { href: `${base}/talent`, label: 'Find professionals' }, { href: `${base}/analytics`, label: 'Analytics' }, { href: `${base}/forecast`, label: 'Forecast' }, { href: `${base}/exchange`, label: 'Regional exchange' }, { href: `${base}/recovery`, label: 'Shift recovery' }, { href: `${base}/assistant`, label: 'Assistant' },
   ];
-  const navFor = (role: string) => (orgRoleCan(role, 'billing.read') ? [...items, { href: `${base}/billing`, label: 'Billing' }] : items);
+  const navFor = (role: string) => (orgRoleCan(role, 'billing.read') ? [...items, { href: `${base}/subscription`, label: 'Subscription' }, { href: `${base}/billing`, label: 'Billing' }] : items);
   return (
     <QueryBoundary state={state}>
       {(d) => (

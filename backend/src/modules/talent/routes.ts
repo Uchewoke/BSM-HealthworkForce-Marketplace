@@ -6,6 +6,8 @@ import type { AppDeps } from '../../shared/deps.js';
 import { AppError } from '../../shared/errors.js';
 import { RateLimiter } from '../../shared/rate-limit.js';
 import { audit } from '../audit/service.js';
+import { requireEntitlementMw } from '../billing/entitlements.js';
+import { meterUsageMw } from '../billing/usage.js';
 import { statusLabel } from '../credentials/labels.js';
 import { FROM_WHERE_BASE } from '../jobs/search.js';
 import { evaluateMatches } from '../matching/loader.js';
@@ -57,7 +59,8 @@ export function talentRoutes(deps: AppDeps) {
 
   const refFor = (orgId: string, professionalId: string) => talentRefFor(db, orgId, professionalId);
 
-  r.get('/', validate({ params: orgParams }), ...search, async (req, res) => {
+  // Each search uses one unit of the plan's monthly allowance (given back if the request fails). Not gated for organizations outside billing.
+  r.get('/', validate({ params: orgParams }), ...search, requireEntitlementMw(deps, 'talent_search.enabled'), meterUsageMw(deps, 'talent_search.monthly_limit'), async (req, res) => {
     if (!searchLimiter.allow(`talent:${req.auth!.userId}`)) throw new AppError('RATE_LIMITED', 'Too many searches. Try again shortly.');
     const q = searchQuery.parse(req.query);
     const orgId = orgOf(req);

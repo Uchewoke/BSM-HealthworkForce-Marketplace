@@ -38,7 +38,7 @@ export async function freshDb(): Promise<Db> {
   return createPgDb(u.toString());
 }
 
-export async function makeTestApp(opts: Pick<AppDeps, 'logger' | 'globalLimit'> & { db?: Db; assistant?: AssistantProvider } = {}) {
+export async function makeTestApp(opts: Pick<AppDeps, 'logger' | 'globalLimit' | 'billing' | 'now'> & { db?: Db; assistant?: AssistantProvider; billingEnabled?: boolean } = {}) {
   const db = opts.db ?? await freshDb();
   await migrate(db);
   const email = new OutboxEmailSender();
@@ -47,8 +47,9 @@ export async function makeTestApp(opts: Pick<AppDeps, 'logger' | 'globalLimit'> 
     NODE_ENV: 'test',
     MFA_ENCRYPTION_KEY: randomBytes(32).toString('base64'),
     FIELD_ENCRYPTION_KEY: randomBytes(32).toString('base64'),
+    ...(opts.billingEnabled ? { BILLING_SUBSCRIPTIONS_ENABLED: 'true' } : {}),
   } as NodeJS.ProcessEnv);
-  const deps: AppDeps = { db, config, email, storage, scanner: new StubScanner(), assistant: opts.assistant ?? new NotConfiguredAssistant(), logger: opts.logger, globalLimit: opts.globalLimit };
+  const deps: AppDeps = { db, config, email, storage, scanner: new StubScanner(), assistant: opts.assistant ?? new NotConfiguredAssistant(), logger: opts.logger, globalLimit: opts.globalLimit, billing: opts.billing, now: opts.now };
   const app = createApp(deps);
   const svc = createAuthService(deps);
 

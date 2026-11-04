@@ -6,6 +6,7 @@ import { requireOrgPermission } from '../../middleware/access.js';
 import { validate } from '../../middleware/http.js';
 import type { AppDeps } from '../../shared/deps.js';
 import { AppError } from '../../shared/errors.js';
+import { requireEntitlementMw } from '../billing/entitlements.js';
 
 const orgParams = z.object({ orgId: z.uuid() });
 const MAX_RANGE_DAYS = 366;
@@ -171,7 +172,7 @@ export function facilityAnalyticsRoutes(deps: AppDeps) {
   const { db } = deps;
   const now = deps.now ?? Date.now;
   const r = Router({ mergeParams: true });
-  r.get('/', validate({ params: orgParams }), requireOrgPermission(deps, 'jobs.read'), async (req: Request, res) => {
+  r.get('/', validate({ params: orgParams }), requireOrgPermission(deps, 'jobs.read'), requireEntitlementMw(deps, 'workforce_analytics.enabled'), async (req: Request, res) => {
     const range = resolveRange(rangeQuery.parse(req.query), now());
     // Cost figures are billing information: only roles with billing.read receive them.
     const includeCosts = orgRoleCan(req.membership!.role, 'billing.read');
@@ -185,7 +186,7 @@ export function agencyAnalyticsRoutes(deps: AppDeps) {
   const { db } = deps;
   const now = deps.now ?? Date.now;
   const r = Router({ mergeParams: true });
-  r.get('/', validate({ params: orgParams }), requireOrgPermission(deps, 'agency.submissions.read'), async (req: Request, res) => {
+  r.get('/', validate({ params: orgParams }), requireOrgPermission(deps, 'agency.submissions.read'), requireEntitlementMw(deps, 'workforce_analytics.enabled'), async (req: Request, res) => {
     const [o] = await db.query<{ type: string }>('SELECT type FROM organizations WHERE id = $1', [req.membership!.organizationId]);
     if (o?.type !== 'agency') throw new AppError('NOT_FOUND', 'Resource not found.');
     const range = resolveRange(rangeQuery.parse(req.query), now());

@@ -20,7 +20,7 @@ export const PERMISSIONS = [
   'jobs.read', 'jobs.manage', 'jobs.publish',
   'applications.read', 'applications.manage',
   'professionals.search',
-  'billing.read',
+  'billing.read', 'billing.manage',
   'agency.roster.read', 'agency.roster.manage', 'agency.jobs.read', 'agency.submissions.read', 'agency.submissions.manage',
   'admin.facility_review', 'admin.credential_review', 'admin.user_lookup',
   'admin.audit_read', 'admin.taxonomy_manage', 'admin.settings_manage', 'admin.support',
@@ -40,7 +40,7 @@ const agencyAdmin: Permission[] = [...agencyRecruiter, 'org.update', 'org.submit
 
 /** Organization-scoped permissions. Least privilege: absent role/permission means denied. */
 export const ORG_ROLE_PERMISSIONS: Record<OrgRole, readonly Permission[]> = {
-  facility_owner: [...admin, 'billing.read'],
+  facility_owner: [...admin, 'billing.read', 'billing.manage'],
   facility_admin: admin,
   hiring_manager: manager,
   recruiter: [...readOnly, 'applications.manage', 'professionals.search'],
@@ -48,7 +48,7 @@ export const ORG_ROLE_PERMISSIONS: Record<OrgRole, readonly Permission[]> = {
   finance: [...readOnly, 'billing.read'],
   read_only: readOnly,
   // Agency roles carry no facility permissions (jobs, locations, applications): agencies only see what a facility grants them.
-  agency_owner: [...agencyAdmin, 'billing.read'], agency_admin: agencyAdmin, agency_recruiter: agencyRecruiter,
+  agency_owner: [...agencyAdmin, 'billing.read', 'billing.manage'], agency_admin: agencyAdmin, agency_recruiter: agencyRecruiter,
   agency_finance: [...agencyRead, 'billing.read'], agency_read_only: agencyRead,
 };
 

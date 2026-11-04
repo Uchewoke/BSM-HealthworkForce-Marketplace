@@ -11,6 +11,7 @@ const TOOLS: (NavItem & { permission?: Permission })[] = [
   { href: '/credentials', label: 'Credential review', permission: 'admin.credential_review' },
   { href: '/jobs', label: 'Marketplace', permission: 'admin.marketplace_oversight' },
   { href: '/billing', label: 'Billing', permission: 'admin.billing_manage' },
+  { href: '/subscriptions', label: 'Subscriptions', permission: 'admin.billing_manage' },
   { href: '/exchange', label: 'Regional exchange', permission: 'admin.marketplace_oversight' },
   { href: '/reviews', label: 'Review disputes', permission: 'admin.support' },
   { href: '/users', label: 'Users', permission: 'admin.user_lookup' },

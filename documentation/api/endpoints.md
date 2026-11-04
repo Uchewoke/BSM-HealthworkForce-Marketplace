@@ -114,6 +114,20 @@ Organizations, under `/organizations/:orgId/billing` (permission `billing.read`)
 
 Agency job detail: `GET /organizations/:orgId/agency/jobs/:jobId` (agency.jobs.read).
 
+## Subscription billing (ADR 0010)
+Public: `GET /billing/plans?customerType=` (active, public plans; no provider ids). Provider webhook: `POST /api/v1/billing/webhooks/stripe` (raw body, `Stripe-Signature`; 400 on a bad signature, 200 on duplicates, 500 to request a retry).
+
+Organizations, under `/organizations/:orgId/billing` (the manual-invoice routes above are unchanged):
+| Path | Permission | Notes |
+|---|---|---|
+| `GET /`, `GET /subscription`, `GET /subscription-invoices` | billing.read | Overview with plans; local subscription (no provider ids); charges read live from Stripe |
+| `GET /entitlements`, `GET /usage` | org.read | Presentation only; the server enforces on every request |
+| `POST /checkout` `{planId}`, `POST /portal`, `POST /cancel`, `POST /resume` | billing.manage (owners) | 503 until billing is switched on; checkout needs an approved organization; 409 if already subscribed |
+
+Gated features answer 403 with `details.code` `ENTITLEMENT_REQUIRED` (`reason`: no_subscription, not_in_plan, past_due_grace_ended, unpaid, canceled, paused, expired, incomplete) or `USAGE_LIMIT_EXCEEDED` (`limit`, `resetsAt`). Only organizations with `billing_mode = enforced` are gated.
+
+Staff, under `/admin/billing` (admin.billing_manage, MFA): `GET|POST /plans`, `PATCH /plans/:planId`, `GET /subscriptions?status&customerType&page`, `GET /metrics?from&to`, `GET /organizations/:orgId`, `PUT /organizations/:orgId/mode` `{mode: exempt|enforced}`, `PUT /organizations/:orgId/customer` `{providerCustomerId}`, `POST /organizations/:orgId/resync`, `GET|POST /adjustments`, `POST /adjustments/:id/revoke` (discounts above 50% need platform_super_admin).
+
 ## Timesheets
 Professional, under `/professionals/me`: `GET /timesheets` (started assignments with their timesheet), `GET /assignments/:id/timesheet`, `PUT /assignments/:id/timesheet` `{workedStart, workedEnd, breakMinutes, note?}` (creates, or resubmits after a return).
 

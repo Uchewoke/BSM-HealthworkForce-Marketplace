@@ -6,6 +6,8 @@ import { cors, globalRateLimit, securityHeaders } from './middleware/security.js
 import { adminRoutes } from './modules/admin/routes.js';
 import { authRoutes } from './modules/auth/routes.js';
 import { adminBillingRoutes } from './modules/billing/routes.js';
+import { adminSubscriptionRoutes, publicBillingRoutes } from './modules/billing/billing-admin.js';
+import { stripeWebhookHandler } from './modules/billing/webhooks.js';
 import { adminExchangeRoutes } from './modules/exchange/routes.js';
 import { adminLegalRoutes } from './modules/legal/routes.js';
 import { adminReviewRoutes } from './modules/reviews/routes.js';
@@ -35,6 +37,8 @@ export function createApp(deps: AppDeps) {
   app.use(securityHeaders(production));
   app.use(cors(deps.config.allowedOrigins));
   app.use(globalRateLimit(deps.globalLimit?.max ?? 600, deps.globalLimit?.windowMs ?? 300_000, deps.now));
+  // The payment provider signs the exact bytes it sends, so this one route reads the raw body and must come before the JSON parser.
+  app.post('/api/v1/billing/webhooks/stripe', express.raw({ type: '*/*', limit: '1mb' }), stripeWebhookHandler(deps));
   app.use(express.json({ limit: '100kb' }));
   app.use(originCheck(deps.config.allowedOrigins));
 
@@ -61,7 +65,9 @@ export function createApp(deps: AppDeps) {
   v1.use('/admin/settings', adminSettingsRoutes(deps, needAuth));
   v1.use('/admin/match-retention', adminMatchRetentionRoutes(deps, needAuth));
   v1.use('/admin/support', adminSupportRoutes(deps, needAuth));
+  v1.use('/billing', publicBillingRoutes(deps));
   v1.use('/admin/billing', adminBillingRoutes(deps, needAuth));
+  v1.use('/admin/billing', adminSubscriptionRoutes(deps, needAuth));
   v1.use('/admin/reviews', adminReviewRoutes(deps, needAuth));
   v1.use('/admin/exchange', adminExchangeRoutes(deps, needAuth));
   v1.use('/admin/legal-signoffs', adminLegalRoutes(deps, needAuth));

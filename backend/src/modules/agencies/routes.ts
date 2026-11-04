@@ -5,6 +5,8 @@ import { param, validate } from '../../middleware/http.js';
 import type { AppDeps } from '../../shared/deps.js';
 import { AppError } from '../../shared/errors.js';
 import { audit } from '../audit/service.js';
+import { assertWithinCountLimit } from '../billing/entitlements.js';
+import { meterUsageMw } from '../billing/usage.js';
 import { emailSchema } from '../auth/schemas.js';
 import { FROM_WHERE_BASE } from '../jobs/search.js';
 import { evaluateMatch, snapshotMatch } from '../matching/loader.js';
@@ -63,6 +65,9 @@ export function agencyRoutes(deps: AppDeps) {
    */
   r.post('/roster/invitations', validate({ params: orgParams, body: rosterInviteBody }), ...guard('agency.roster.manage'), requireApprovedOrg(deps), async (req, res) => {
     const agencyId = orgOf(req);
+    // Checked before the lookup, so the answer reveals nothing about whether the email belongs to a professional.
+    const [roster] = await db.query<{ n: string }>(`SELECT count(*) AS n FROM agency_roster WHERE agency_id = $1 AND status IN ('invited','active')`, [agencyId]);
+    await assertWithinCountLimit(deps, db, agencyId, 'agency_roster.limit', Number(roster?.n ?? 0));
     const [target] = await db.query<{ professional_id: string; user_id: string }>(
       `SELECT p.id AS professional_id, u.id AS user_id FROM users u JOIN professionals p ON p.user_id = u.id
         WHERE lower(u.email) = $1 AND u.status = 'active' AND p.account_status = 'active'`, [req.body.email]);
@@ -117,7 +122,7 @@ export function agencyRoutes(deps: AppDeps) {
   });
 
   // ---- submissions (applications made on behalf of roster members)
-  r.post('/jobs/:jobId/submissions', validate({ params: orgJobParams, body: submitBody }), ...guard('agency.submissions.manage'), requireApprovedOrg(deps), async (req, res) => {
+  r.post('/jobs/:jobId/submissions', validate({ params: orgJobParams, body: submitBody }), ...guard('agency.submissions.manage'), requireApprovedOrg(deps), meterUsageMw(deps, 'agency_submissions.monthly_limit'), async (req, res) => {
     const agencyId = orgOf(req);
     const jobId = param(req, 'jobId');
     const b = req.body as z.infer<typeof submitBody>;

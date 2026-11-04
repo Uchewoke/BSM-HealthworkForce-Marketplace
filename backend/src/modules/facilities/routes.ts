@@ -6,6 +6,7 @@ import type { AppDeps } from '../../shared/deps.js';
 import { AppError } from '../../shared/errors.js';
 import { updateRow } from '../../shared/sql.js';
 import { audit } from '../audit/service.js';
+import { assertWithinCountLimit } from '../billing/entitlements.js';
 
 const name = z.string().trim().min(2).max(160);
 const timezone = z.string().refine((tz) => {
@@ -98,17 +99,31 @@ export function facilityRoutes(deps: AppDeps) {
     const orgId = req.membership!.organizationId;
     await facilityExists(orgId, param(req, 'facilityId'));
     const b = req.body;
-    const [row] = await db.query(
+    // The organization row is locked while counting and inserting, so two simultaneous requests cannot both take the last slot.
+    const [row] = await db.transaction(async (tx) => {
+      await tx.query('SELECT id FROM organizations WHERE id = $1 FOR UPDATE', [orgId]);
+      const [n] = await tx.query<{ n: string }>('SELECT count(*) AS n FROM facility_locations WHERE organization_id = $1 AND active', [orgId]);
+      await assertWithinCountLimit(deps, tx, orgId, 'active_locations.limit', Number(n?.n ?? 0));
+      return tx.query(
       `INSERT INTO facility_locations (organization_id, facility_id, name, address_line1, address_line2, city, state, postal_code, timezone, phone)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING ${LOCATION_RET}`,
       [orgId, param(req, 'facilityId'), b.name, b.addressLine1, b.addressLine2 ?? null, b.city, b.state, b.postalCode, b.timezone, b.phone ?? null]);
+    });
     await log(req, 'location.created', 'facility_location', (row as any).id);
     res.status(201).json({ location: row });
   });
   r.patch('/:facilityId/locations/:locationId', validate({ params: P.location, body: patch(locationBody) }), ...write, async (req, res) => {
     const orgId = req.membership!.organizationId;
     await locationExists(orgId, param(req, 'facilityId'), param(req, 'locationId'));
-    const row = await updateRow(db, 'facility_locations', LOCATION_COLS, req.body, { id: param(req, 'locationId'), organizationId: orgId }, LOCATION_RET);
+    // Switching a location back on counts against the plan the same way adding one does.
+    const row = await db.transaction(async (tx) => {
+      if (req.body.active === true) {
+        await tx.query('SELECT id FROM organizations WHERE id = $1 FOR UPDATE', [orgId]);
+        const [on] = await tx.query<{ n: string }>('SELECT count(*) AS n FROM facility_locations WHERE organization_id = $1 AND active AND id <> $2', [orgId, param(req, 'locationId')]);
+        await assertWithinCountLimit(deps, tx, orgId, 'active_locations.limit', Number(on?.n ?? 0));
+      }
+      return updateRow(tx, 'facility_locations', LOCATION_COLS, req.body, { id: param(req, 'locationId'), organizationId: orgId }, LOCATION_RET);
+    });
     if (!row) throw notFound();
     await log(req, 'location.updated', 'facility_location', param(req, 'locationId'));
     res.json({ location: row });

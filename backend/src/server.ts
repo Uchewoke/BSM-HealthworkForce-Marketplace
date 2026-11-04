@@ -2,6 +2,7 @@ import { createApp } from './app.js';
 import { loadConfig } from './config/env.js';
 import { createPgDb, createPgliteDb, migrate } from './db/index.js';
 import { AnthropicAssistant } from './integrations/assistant.js';
+import { StripeBillingProvider } from './integrations/billing.js';
 import { DevConsoleEmailSender } from './integrations/email.js';
 import { NotConfiguredScanner } from './integrations/malware.js';
 import { LocalFsStorage } from './integrations/storage.js';
@@ -29,6 +30,7 @@ const port = Number(process.env.PORT ?? 4000);
 const deps = {
   db, config, email: new DevConsoleEmailSender(config.webUrl, config.nodeEnv),
   storage: new LocalFsStorage(process.env.FILE_STORAGE_DIR ?? './.data/files'),
+  billing: StripeBillingProvider.fromEnv(), // NotConfiguredBillingProvider unless STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET are set
   assistant: AnthropicAssistant.fromEnv(), // NotConfiguredAssistant unless ANTHROPIC_API_KEY is set
   scanner: new NotConfiguredScanner(), // documents are stored with scan_status = 'not_scanned' until a scanner is configured
 };

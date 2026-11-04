@@ -5,6 +5,7 @@ import { param, validate } from '../../middleware/http.js';
 import type { AppDeps } from '../../shared/deps.js';
 import { AppError } from '../../shared/errors.js';
 import { RateLimiter } from '../../shared/rate-limit.js';
+import { requireEntitlementMw } from '../billing/entitlements.js';
 import { createMatchRun, listMatchRuns, readMatchRun } from './service.js';
 
 const jobParams = z.object({ orgId: z.uuid(), jobId: z.uuid() });
@@ -29,7 +30,7 @@ export function matchRunRoutes(deps: AppDeps) {
   const now = deps.now ?? Date.now;
   const limiter = new RateLimiter(20, 3600_000, now);
   const r = Router({ mergeParams: true });
-  const create = [requireOrgPermission(deps, 'professionals.search'), requireApprovedOrg(deps)];
+  const create = [requireOrgPermission(deps, 'professionals.search'), requireApprovedOrg(deps), requireEntitlementMw(deps, 'matching.enabled')];
   const read = requireOrgPermission(deps, 'applications.read');
 
   r.post('/jobs/:jobId/match-runs', validate({ params: jobParams, body: createBody }), ...create, async (req, res) => {
