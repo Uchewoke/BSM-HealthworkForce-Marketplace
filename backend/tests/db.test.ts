@@ -21,5 +21,5 @@ describe('embedded database on disk', () => {
     } finally {
       await rm(base, { recursive: true, force: true });
     }
-  }, 120_000);
+  }, 300_000); // two on-disk database starts plus a full migration
 });

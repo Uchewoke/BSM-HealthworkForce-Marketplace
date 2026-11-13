@@ -1,7 +1,6 @@
 {
   "extends": "../../tsconfig.web.json",
   "compilerOptions": {
-    "baseUrl": ".",
     "paths": { "@/*": ["./*"] },
     "plugins": [{ "name": "next" }],
     "types": ["vitest/globals", "@testing-library/jest-dom"]
