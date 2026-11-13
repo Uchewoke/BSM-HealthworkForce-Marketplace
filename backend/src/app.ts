@@ -22,6 +22,7 @@ import { applyRoutes } from './modules/applications/routes.js';
 import { jobSearchRoutes } from './modules/jobs/search.js';
 import { notificationRoutes } from './modules/notifications/routes.js';
 import { organizationRoutes } from './modules/organizations/routes.js';
+import { scheduledRoutes } from './modules/scheduled/routes.js';
 import { adminSupportRoutes, supportRoutes } from './modules/support/routes.js';
 import type { AppDeps } from './shared/deps.js';
 import { logger as defaultLogger } from './shared/logger.js';
@@ -74,6 +75,7 @@ export function createApp(deps: AppDeps) {
   v1.use('/admin', adminCredentialRoutes(deps, needAuth));
   v1.use('/admin', adminRoutes(deps, needAuth)); // defines /users/lookup, which must precede /users/:id below
   v1.use('/admin', adminOperationsRoutes(deps, needAuth, metrics));
+  v1.use('/scheduled', scheduledRoutes(deps)); // for an external scheduler (Vercel Schedules); secret-protected, no session
   app.use('/api/v1', v1);
 
   app.use(notFound);

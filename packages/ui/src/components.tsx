@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useId, useState, type ButtonHTMLAttributes, type ReactNode } from 'react';
 import type { ApiError } from '@bsm/api-client';
-import { fieldError, useSession, type ApiState } from './hooks';
+import { fieldError, hardNavigate, useSession, type ApiState } from './hooks';
 
 /* ---------- feedback ---------- */
 
@@ -95,7 +95,7 @@ export function AppShell({ brand, nav, children, unreadCount }: { brand: string;
           <nav aria-label="Main" className="nav">
             {nav.map((i) => <Link key={i.href} href={i.href} aria-current={active(i.href) ? 'page' : undefined}>{i.label}{i.href === '/notifications' && unreadCount ? ` (${unreadCount})` : ''}</Link>)}
             {user
-              ? <><span className="muted small">{user.email}</span><button className="link" onClick={async () => { await logout(); window.location.assign('/login'); }}>Sign out</button></>
+              ? <><span className="muted small">{user.email}</span><button className="link" onClick={async () => { await logout(); hardNavigate('/login'); }}>Sign out</button></>
               : <><Link href="/login">Sign in</Link><Link href="/register">Register</Link></>}
           </nav>
         </div>
@@ -108,9 +108,10 @@ export function AppShell({ brand, nav, children, unreadCount }: { brand: string;
 /** Redirects anonymous visitors to sign-in; optionally requires a platform role + verified MFA. */
 export function RequireAuth({ children, platform = false, loginPath = '/login' }: { children: ReactNode; platform?: boolean; loginPath?: string }) {
   const { user, loading } = useSession();
+  const pathname = usePathname() ?? '/'; // the app path without any base path, which hardNavigate adds back
   useEffect(() => {
-    if (!loading && !user) window.location.assign(`${loginPath}?next=${encodeURIComponent(window.location.pathname)}`);
-  }, [loading, user, loginPath]);
+    if (!loading && !user) hardNavigate(`${loginPath}?next=${encodeURIComponent(pathname)}`);
+  }, [loading, user, loginPath, pathname]);
   if (loading || !user) return <Loading label="Checking your session…" />;
   if (platform && !user.platformRole) return <Alert tone="warning" title="Not allowed">This area is for BSM staff.</Alert>;
   if (platform && !user.mfaVerified) {

@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { Alert, Button, Card, ErrorAlert, PageHeader, TextField } from './components';
-import { useAction, useClient, useSession } from './hooks';
+import { hardNavigate, useAction, useClient, useSession } from './hooks';
 
 /** Only same-site relative paths are honored for "?next=", so a crafted link cannot send people elsewhere. */
 export function safeNextPath(raw: string | null | undefined, fallback: string): string {
@@ -10,8 +10,8 @@ export function safeNextPath(raw: string | null | undefined, fallback: string): 
   return raw;
 }
 
-export function LoginForm({ title = 'Sign in', afterLogin = '/dashboard', registerHref, forgotHref = '/forgot-password' }: {
-  title?: string; afterLogin?: string; registerHref?: string; forgotHref?: string;
+export function LoginForm({ title = 'Sign in', subtitle, afterLogin = '/dashboard', registerHref, forgotHref = '/forgot-password' }: {
+  title?: string; subtitle?: string; afterLogin?: string; registerHref?: string; forgotHref?: string;
 }) {
   const client = useClient();
   const { refresh } = useSession();
@@ -22,12 +22,12 @@ export function LoginForm({ title = 'Sign in', afterLogin = '/dashboard', regist
     await client.post('/auth/login', { email, password, totpCode: totp || undefined });
     await refresh();
     const next = new URLSearchParams(window.location.search).get('next');
-    window.location.assign(safeNextPath(next, afterLogin));
+    hardNavigate(safeNextPath(next, afterLogin));
   });
   const needTotp = !!login.error?.mfaRequired || totp.length > 0;
   return (
     <div style={{ maxWidth: 440, margin: '32px auto' }}>
-      <PageHeader title={title} />
+      <PageHeader title={title} subtitle={subtitle} />
       <Card>
         <form onSubmit={(e) => { e.preventDefault(); void login.run(); }} noValidate>
           <ErrorAlert error={login.error && !login.error.mfaRequired ? login.error : null} />

@@ -1,7 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { useState } from 'react';
-import { Alert, Badge, Button, Card, DataTable, EmptyState, ErrorAlert, PageHeader, Pagination, QueryBoundary, SelectField, TextField, formatDate, titleCase, useAction, useApi, useClient } from '@bsm/ui';
+import { hardNavigate, Alert, Badge, Button, Card, DataTable, EmptyState, ErrorAlert, PageHeader, Pagination, QueryBoundary, SelectField, TextField, formatDate, titleCase, useAction, useApi, useClient } from '@bsm/ui';
 import { INVOICE_TONE, money } from '@/lib/billing';
 
 interface Inv { id: string; organization_name: string; number: string | null; status: string; period_start: string; period_end: string; total_cents: string; due_date: string | null }
@@ -89,7 +89,7 @@ export default function BillingPage() {
     <>
       <PageHeader title="Billing" subtitle="Manual invoicing. Recording a payment here is bookkeeping only: nothing is charged or collected by this system." />
       <Fee />
-      <Generate onCreated={(id) => window.location.assign(`/billing/${id}`)} />
+      <Generate onCreated={(id) => hardNavigate(`/billing/${id}`)} />
       <Card title="Invoices">
         <SelectField label="Status" name="status" value={status} onChange={(v) => { setStatus(v); setPage(1); }} placeholder="All"
           options={['draft', 'issued', 'paid', 'void'].map((s) => ({ value: s, label: titleCase(s) }))} />

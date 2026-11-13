@@ -12,6 +12,9 @@ Losing `FIELD_ENCRYPTION_KEY` makes credential numbers unrecoverable; losing `MF
 Back both keys up separately from the database backups.
 
 ## 2. Deploy and roll back
+The target platform is Vercel, one project with three services; see `infrastructure/deployment/README.md` for the environment
+variables, the scheduled routes that replace the in-process timers, and the production blocker (no email/storage adapter yet).
+
 1. Take a fresh backup (section 3). 2. Deploy the new build. 3. Run `npm run migrate -w backend` (applies pending `backend/migrations/NNNN_*.sql`,
 each in a transaction, recorded in `schema_migrations`). 4. Check `GET /api/v1/ready` and `GET /api/v1/health`.
 **Migrations are forward-only (no down scripts).** Rolling back application code is safe while the schema change was additive

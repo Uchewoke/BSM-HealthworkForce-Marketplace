@@ -148,7 +148,7 @@ describe('sign-in', () => {
 describe('route protection in the browser', () => {
   it('sends anonymous visitors to sign in, remembering where they were going', async () => {
     renderWithApp(<RequireAuth><p>secret</p></RequireAuth>, fakeClient(signedOut));
-    await waitFor(() => expect(assign).toHaveBeenCalledWith('/login?next=%2Fdashboard'));
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('/login?next=%2Fprofessional%2Fcredentials') /* the router's path (mocked in setup.ts), not window.location: it excludes any base path */);
     expect(screen.queryByText('secret')).not.toBeInTheDocument();
   });
 

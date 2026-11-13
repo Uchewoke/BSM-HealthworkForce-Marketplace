@@ -1,4 +1,5 @@
 'use client';
+import Link from 'next/link';
 import { useState } from 'react';
 import { US_STATE_CODES, Alert, Badge, Button, Card, ConfirmButton, DataTable, ErrorAlert, PageHeader, QueryBoundary, TextField, formatDateTime, titleCase, useAction, useApi, useClient } from '@bsm/ui';
 
@@ -57,7 +58,7 @@ function Participants() {
       <ErrorAlert error={set.error} />
       <QueryBoundary state={list}>
         {(d) => <DataTable caption="Exchange participants" rows={d.participants} rowKey={(p) => p.id} empty={<p className="muted">No facility has joined an exchange yet.</p>} columns={[
-          { header: 'Facility', cell: (p) => <a href={`/organizations/${p.organization_id}`}>{p.organization_name}</a> }, { header: 'Region', cell: (p) => p.region_name },
+          { header: 'Facility', cell: (p) => <Link href={`/organizations/${p.organization_id}`}>{p.organization_name}</Link> }, { header: 'Region', cell: (p) => p.region_name },
           { header: 'Status', cell: (p) => <><Badge tone={p.status === 'active' ? 'success' : p.status === 'suspended' ? 'danger' : 'neutral'}>{titleCase(p.status)}</Badge>{p.status_reason && <span className="small muted"> {p.status_reason}</span>}</> },
           { header: 'Joined', cell: (p) => formatDateTime(p.accepted_at) },
           { header: 'Action', cell: (p) => p.status === 'withdrawn' ? <span className="muted small">—</span> : (

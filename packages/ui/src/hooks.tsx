@@ -79,3 +79,14 @@ export function useAction<A extends unknown[], R>(fn: (...args: A) => Promise<R>
 
 /** First server-side validation message for a field, if any. */
 export const fieldError = (error: ApiError | null | undefined, name: string): string | undefined => error?.fieldErrors?.[name]?.[0];
+
+/** The path prefix the app is served under (Next `basePath`), inlined at build time; empty when served at the root. */
+export const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH ?? '';
+
+/**
+ * Full-page navigation to an app path. next/link and the router add the base path themselves; `window.location` does not,
+ * so every hard navigation goes through here. Paths are app paths, never prefixed by the caller.
+ */
+export function hardNavigate(path: string) {
+  window.location.assign(`${BASE_PATH}${path}`);
+}
