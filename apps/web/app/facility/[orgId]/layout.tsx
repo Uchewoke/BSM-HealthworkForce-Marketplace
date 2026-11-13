@@ -32,5 +32,5 @@ function Inner({ orgId, children }: { orgId: string; children: ReactNode }) {
 
 export default function OrgLayout({ children }: { children: ReactNode }) {
   const { orgId } = useParams<{ orgId: string }>();
-  return <RequireAuth><Inner orgId={orgId}>{children}</Inner></RequireAuth>;
+  return <RequireAuth loginPath="/login/facility"><Inner orgId={orgId}>{children}</Inner></RequireAuth>;
 }

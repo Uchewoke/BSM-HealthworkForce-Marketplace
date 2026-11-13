@@ -38,5 +38,5 @@ function Hub() {
 }
 
 export default function FacilityHubPage() {
-  return <RequireAuth><Hub /></RequireAuth>;
+  return <RequireAuth loginPath="/login/facility"><Hub /></RequireAuth>;
 }

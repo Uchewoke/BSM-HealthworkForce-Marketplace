@@ -11,10 +11,13 @@ export default function Home() {
           BSM supplies the marketplace and the workflow.
         </p>
         <div className="row">
-          <LinkButton href="/register">Create an account</LinkButton>
+          <LinkButton href="/register/professional">I am a professional</LinkButton>
+          <LinkButton href="/register/facility">I represent a facility</LinkButton>
           <LinkButton href="/how-it-works" tone="secondary">How it works</LinkButton>
-          <LinkButton href="/login" tone="secondary">Sign in</LinkButton>
         </div>
+        <p className="small muted">
+          Already registered? <a href="/login/professional">Professional sign in</a> · <a href="/login/facility">Facility sign in</a>
+        </p>
       </section>
 
       <div className="grid">
