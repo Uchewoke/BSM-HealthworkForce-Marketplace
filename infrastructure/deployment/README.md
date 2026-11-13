@@ -9,10 +9,22 @@ app is built with `basePath: /admin`.
 Nothing calls another service server-side (both apps are client-rendered and the browser calls `/api/v1` on the same origin),
 so no service bindings are declared. Add one only if server-side code in a service starts calling another.
 
+## Project settings on Vercel
+
+- **Framework Preset: Services.** The dashboard must show three builds (`web`, `admin`, `backend`). If a deployment runs one
+  `npm run build` at the repository root instead (the log then shows `workspace @bsm/web` lines), the project is not in services
+  mode: set the Framework Preset to Services, leave Root Directory empty and remove any Build or Install Command override.
+- **Do not define `NODE_ENV` yourself** (nor `NPM_FLAGS=--production`). Vercel provides `NODE_ENV=production` at runtime on its
+  own. A `NODE_ENV` project variable also applies while dependencies install, and npm then skips `devDependencies`: TypeScript is
+  missing, Next ignores `tsconfig.json`, and every `@/...` import fails with "Module not found" (reproduced on 2026-11-13). Each
+  service in `vercel.json` therefore installs with `npm install --include=dev --workspaces --include-workspace-root`, which installs the whole workspace (root devDependencies included) from the
+  repository root regardless of that variable.
+- Node.js 22 or newer (`engines` in `package.json`).
+
 ## Status: not deployable to production yet
 
 `backend/src/runtime.ts` refuses to start with `NODE_ENV=production` because no email adapter and no private object-storage
-adapter exist (see `../storage/README.md`). Vercel sets `NODE_ENV=production` for every deployment, previews included, so the API
+adapter exist (see `../storage/README.md`). Vercel runs every deployment, previews included, with `NODE_ENV=production`, so the API
 function fails until those adapters are implemented. The configuration here is complete up to that point; it has been verified
 with typecheck, tests and local builds, not with a deployment.
 
