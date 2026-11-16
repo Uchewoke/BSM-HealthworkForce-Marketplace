@@ -6,8 +6,9 @@ import { startShiftRecoveryScheduler } from './modules/shift-recovery/scheduler.
 import { createRuntimeDeps, openDatabase } from './runtime.js';
 import { logger } from './shared/logger.js';
 
-// The long-running server: one process that listens on a port and runs the schedulers on timers. On Vercel the same app is
-// served from src/serverless.ts instead, where Vercel Schedules replace the timers (see vercel.json at the repository root).
+// The long-running server: one process that listens on a port and runs the schedulers on timers. This is what the Droplet
+// container runs (infrastructure/deployment/droplet/). src/serverless.ts serves the same app on Vercel, where an external
+// scheduler replaces the timers.
 const config = loadConfig();
 const db = await openDatabase(config);
 

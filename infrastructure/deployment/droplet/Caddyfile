@@ -1,0 +1,18 @@
+# TLS termination for the API. Caddy obtains and renews the certificate for API_DOMAIN itself (Let's Encrypt), redirects
+# HTTP to HTTPS, and forwards to the API container with X-Forwarded-For set, which `trust proxy = 1` in app.ts expects.
+{
+	admin off
+}
+
+{$API_DOMAIN} {
+	encode zstd gzip
+	# Uploads are capped by the API at 10 MB (MAX_UPLOAD_BYTES); stop anything larger at the edge.
+	request_body {
+		max_size 12MB
+	}
+	reverse_proxy api:4000
+	log {
+		output stdout
+		format json
+	}
+}

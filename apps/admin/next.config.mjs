@@ -3,8 +3,8 @@ import { fileURLToPath } from 'node:url';
 
 // Pin the workspace root so Next does not pick up unrelated lockfiles higher up the disk.
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
-// On Vercel the API is a service of the same deployment, reached same-origin through the /api rewrite in vercel.json. Elsewhere
-// (local development) it is a separate server. NEXT_PUBLIC_API_URL overrides either default; `env` below inlines the result for the browser.
+// In production the API is a separate origin (a DigitalOcean Droplet; set NEXT_PUBLIC_API_URL=https://api.<domain>/api/v1 on Vercel).
+// The defaults below cover a same-origin /api rewrite on Vercel and the local dev server; `env` inlines the result for the browser.
 const api = process.env.NEXT_PUBLIC_API_URL ?? (process.env.VERCEL ? '/api/v1' : 'http://localhost:4000/api/v1');
 const apiOrigin = api.startsWith('/') ? null : new URL(api).origin; // same-origin needs nothing beyond 'self' in the CSP
 // On Vercel the admin app is served under /admin by the top-level rewrite in vercel.json, so Next must put that prefix on links,

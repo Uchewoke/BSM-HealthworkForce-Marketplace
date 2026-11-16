@@ -37,7 +37,7 @@ export function createApp(deps: AppDeps) {
   app.use(requestLogger(deps.logger ?? defaultLogger, metrics));
   app.use(securityHeaders(production));
   app.use(cors(deps.config.allowedOrigins));
-  app.use(globalRateLimit(deps.globalLimit?.max ?? 600, deps.globalLimit?.windowMs ?? 300_000, deps.now));
+  app.use(globalRateLimit(deps.globalLimit?.max ?? 600, deps.globalLimit?.windowMs ?? 300_000, deps.now, deps.limits));
   // The payment provider signs the exact bytes it sends, so this one route reads the raw body and must come before the JSON parser.
   app.post('/api/v1/billing/webhooks/stripe', express.raw({ type: '*/*', limit: '1mb' }), stripeWebhookHandler(deps));
   app.use(express.json({ limit: '100kb' }));

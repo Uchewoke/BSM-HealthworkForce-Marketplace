@@ -24,7 +24,7 @@ type Kind = 'facility' | 'agency';
 function assistantRoutes(deps: AppDeps, kind: Kind) {
   const { db } = deps;
   const now = deps.now ?? Date.now;
-  const limiter = new RateLimiter(30, 3600_000, now);
+  const limiter = new RateLimiter(30, 3600_000, now, deps.limits);
   const r = Router({ mergeParams: true });
   const permission = kind === 'facility' ? 'jobs.read' : 'agency.jobs.read';
   const guard: RequestHandler[] = [requireOrgPermission(deps, permission), requireOrgType(deps, kind)];
@@ -33,7 +33,7 @@ function assistantRoutes(deps: AppDeps, kind: Kind) {
 
   r.post('/', validate({ params: orgParams, body: chatBody }), ...guard, requireApprovedOrg(deps), async (req: Request, res) => {
     if (!deps.assistant.configured) throw new AppError('UNAVAILABLE', 'The AI assistant is not set up on this server yet.');
-    if (!limiter.allow(`assistant:${req.auth!.userId}`)) throw new AppError('RATE_LIMITED', 'You have used the assistant a lot in the last hour. Please try again later.');
+    if (!(await limiter.allow(`assistant:${req.auth!.userId}`))) throw new AppError('RATE_LIMITED', 'You have used the assistant a lot in the last hour. Please try again later.');
     const orgId = req.membership!.organizationId;
     const role = req.membership!.role;
     const today = new Date(now()).toISOString().slice(0, 10);

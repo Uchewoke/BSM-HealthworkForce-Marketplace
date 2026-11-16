@@ -34,7 +34,7 @@ const TICKET_COLS = 't.id, t.category, t.subject, t.status, t.priority, t.create
 export function supportRoutes(deps: AppDeps, needAuth: RequestHandler) {
   const { db } = deps;
   const now = deps.now ?? Date.now;
-  const limiter = new RateLimiter(10, 3600_000, now);
+  const limiter = new RateLimiter(10, 3600_000, now, deps.limits);
   const r = Router();
   r.use(needAuth);
 
@@ -45,7 +45,7 @@ export function supportRoutes(deps: AppDeps, needAuth: RequestHandler) {
   }
 
   r.post('/tickets', validate({ body: createBody }), async (req, res) => {
-    if (!limiter.allow(`ticket:${req.auth!.userId}`)) throw new AppError('RATE_LIMITED', 'Too many requests. Try again later.');
+    if (!(await limiter.allow(`ticket:${req.auth!.userId}`))) throw new AppError('RATE_LIMITED', 'Too many requests. Try again later.');
     const b = req.body as z.infer<typeof createBody>;
     if (b.organizationId) {
       const [m] = await db.query(`SELECT 1 FROM organization_members WHERE organization_id = $1 AND user_id = $2 AND status = 'active'`, [b.organizationId, req.auth!.userId]);

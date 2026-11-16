@@ -5,18 +5,23 @@
 
 ## 1. Configuration
 Required environment variables are listed in `.env.example`. Production must set `NODE_ENV=production`, `DATABASE_URL`,
-`WEB_URL`, `ADMIN_URL`, `MFA_ENCRYPTION_KEY`, `FIELD_ENCRYPTION_KEY` (32 random bytes each, base64, **different** values) and a private
-file store. **The server refuses to start in production** until a real email provider adapter and private-bucket storage adapter exist
-(`backend/src/server.ts`); this is intentional so nothing pretends to send email or keeps documents on local disk.
+`WEB_URL`, `ADMIN_URL`, `MFA_ENCRYPTION_KEY`, `FIELD_ENCRYPTION_KEY` (32 random bytes each, base64, **different** values), an email provider
+(`EMAIL_PROVIDER`, `EMAIL_FROM`, provider key), a private bucket (`STORAGE_*`) and a rate-limit store (`UPSTASH_REDIS_REST_*`, or
+`RATE_LIMIT_STORE=memory` for the single container on the Droplet, which `compose.yml` sets).
+**The server refuses to start in production** until all three are configured (`backend/src/runtime.ts`) and says which are missing;
+this is intentional so nothing pretends to send email, keeps documents on local disk, or rate-limits per instance only.
 Losing `FIELD_ENCRYPTION_KEY` makes credential numbers unrecoverable; losing `MFA_ENCRYPTION_KEY` forces every MFA user to re-enroll.
 Back both keys up separately from the database backups.
 
 ## 2. Deploy and roll back
-The target platform is Vercel, one project with three services; see `infrastructure/deployment/README.md` for the environment
-variables, the scheduled routes that replace the in-process timers, and the production blocker (no email/storage adapter yet).
+The apps deploy to Vercel on push; the API runs on a DigitalOcean Droplet with Docker Compose (`infrastructure/deployment/droplet/`,
+README there for setup). See `infrastructure/deployment/README.md` for the environment variables.
 
-1. Take a fresh backup (section 3). 2. Deploy the new build. 3. Run `npm run migrate -w backend` (applies pending `backend/migrations/NNNN_*.sql`,
-each in a transaction, recorded in `schema_migrations`). 4. Check `GET /api/v1/ready` and `GET /api/v1/health`.
+1. Take a fresh backup (section 3). 2. On the Droplet run `/opt/bsm/infrastructure/deployment/droplet/deploy.sh <ref>`: it pulls,
+rebuilds the image, swaps the container (a few seconds of downtime), and waits for the health check. The server applies pending
+`backend/migrations/NNNN_*.sql` as it starts (each in a transaction, recorded in `schema_migrations`). 3. The script ends by calling
+`GET /api/v1/ready`; also check `docker compose logs --tail 100 api` for the "migrations applied" and "api listening" lines.
+Roll back application code with `deploy.sh <previous ref>`.
 **Migrations are forward-only (no down scripts).** Rolling back application code is safe while the schema change was additive
 (all migrations so far are additive except two constraint replacements in `0006`). For anything else, roll back by restoring the backup
 taken in step 1. Never edit an applied migration; add a new one.
@@ -50,13 +55,29 @@ No alerting is configured in code. Someone must own these alerts before pilot.
 1. **Triage:** classify (availability, data exposure, account compromise, abuse). Start a timeline (UTC) with the request ids and audit-log entries involved.
 2. **Contain:** suspend affected users (`POST /admin/users/:id/status`, revokes sessions), pause or close offending listings (`POST /admin/jobs/:id/status`), disable a state (`PUT /admin/states/:state`) if needed. To invalidate all sessions: `UPDATE sessions SET revoked_at = now() WHERE revoked_at IS NULL`.
 3. **Investigate:** audit-log search (`GET /admin/audit-logs`) by actor, action prefix, target and time window; request logs by request id.
-4. **Key compromise:** rotate `MFA_ENCRYPTION_KEY` / `FIELD_ENCRYPTION_KEY` (requires a re-encryption script, **not yet written**), force password resets, and rotate any provider credentials.
+4. **Key compromise:** rotate `MFA_ENCRYPTION_KEY` / `FIELD_ENCRYPTION_KEY` with the procedure in section 8, force password resets, and rotate any provider credentials.
 5. **Notify** according to counsel's guidance (state breach-notification laws, contractual duties): decisions that need qualified legal input, see `ASSUMPTIONS.md`.
 6. **Review:** write a post-incident note; add a test for the failure.
 Contacts, on-call rota and escalation paths are **not defined** and must be filled in by the product owner.
 
 ## 6. First administrator
 `BSM_ADMIN_PASSWORD='<12+ chars>' npm run create-admin -w backend -- you@example.com "Your Name" platform_super_admin`, then sign in and enroll MFA (`POST /auth/mfa/setup`, `/auth/mfa/confirm`). Never seed a default admin password. Unset the variable afterwards.
+
+## 8. Encryption key rotation
+`npm run rotate-keys -w backend` re-encrypts `mfa_methods.secret_enc` and/or `credentials.number_enc` under new keys, in one transaction,
+after checking every row can be read with the current key. Rows already under the new key are skipped, so an interrupted run can be repeated.
+
+1. Generate the new key(s): `openssl rand -base64 32`. Store them in the secrets manager next to the current ones.
+2. Dry run against production, with the current keys in the environment as usual:
+   `NEW_FIELD_ENCRYPTION_KEY=... NEW_MFA_ENCRYPTION_KEY=... DATABASE_URL=... npm run rotate-keys -w backend` and read the counts.
+3. In a maintenance window (the API keeps running, but between step 4 and step 5 it cannot read rotated rows: sign-ins with MFA and
+   credential number display fail for those seconds), take a backup.
+4. Run the same command with `-- --apply`.
+5. Immediately set the new value(s) as `MFA_ENCRYPTION_KEY` / `FIELD_ENCRYPTION_KEY` in the environment and redeploy. Signed download
+   links issued in the last 60 seconds stop working, which is harmless.
+6. Verify: an MFA user signs in; a reviewer opens a credential with a number. Then destroy the old keys.
+If step 4 fails it changes nothing and names the row; a row that neither key can read means the database and the keys are out of step
+(restore from a matching backup, or investigate before retrying).
 
 ## 7. Data retention
 **Match runs** expire automatically (ADR 0009). Deploy and enable them with `documentation/operations/match-retention-deployment.md`, which keeps the timer off until a person has watched the first deletions. Everything else has no retention job yet (assumption #8); audit logs are append-only by design, so plan archival rather than deletion.

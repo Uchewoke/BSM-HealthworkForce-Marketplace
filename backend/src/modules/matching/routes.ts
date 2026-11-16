@@ -28,13 +28,13 @@ const readQuery = z.object({
 export function matchRunRoutes(deps: AppDeps) {
   const { db } = deps;
   const now = deps.now ?? Date.now;
-  const limiter = new RateLimiter(20, 3600_000, now);
+  const limiter = new RateLimiter(20, 3600_000, now, deps.limits);
   const r = Router({ mergeParams: true });
   const create = [requireOrgPermission(deps, 'professionals.search'), requireApprovedOrg(deps), requireEntitlementMw(deps, 'matching.enabled')];
   const read = requireOrgPermission(deps, 'applications.read');
 
   r.post('/jobs/:jobId/match-runs', validate({ params: jobParams, body: createBody }), ...create, async (req, res) => {
-    if (!limiter.allow(`match-run:${req.auth!.userId}`)) throw new AppError('RATE_LIMITED', 'Too many matching runs. Try again later.');
+    if (!(await limiter.allow(`match-run:${req.auth!.userId}`))) throw new AppError('RATE_LIMITED', 'Too many matching runs. Try again later.');
     const b = req.body as z.infer<typeof createBody>;
     const out = await createMatchRun(db, {
       organizationId: req.membership!.organizationId, jobId: param(req, 'jobId'), scope: b.scope, shiftIds: b.shiftIds,

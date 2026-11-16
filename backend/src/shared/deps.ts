@@ -7,12 +7,15 @@ import type { AssistantProvider } from '../integrations/assistant.js';
 import type { EmailSender } from '../integrations/email.js';
 import type { MalwareScanner } from '../integrations/malware.js';
 import type { PrivateFileStorage } from '../integrations/storage.js';
+import type { RateLimitStore } from './rate-limit.js';
 
 export interface CoreDeps {
   db: Db;
   config: AppConfig;
   email: EmailSender;
   now?: () => number;
+  /** Shared rate-limit counters (Redis). Unset: per-process memory, which is only correct for a single long-running server. */
+  limits?: RateLimitStore;
 }
 
 export interface AppDeps extends CoreDeps {

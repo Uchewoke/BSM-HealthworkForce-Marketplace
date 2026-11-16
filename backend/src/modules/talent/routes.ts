@@ -52,7 +52,7 @@ const OUTCOME_ORDER = ['eligible', 'pending_verification', 'needs_review', 'unav
 export function talentRoutes(deps: AppDeps) {
   const { db } = deps;
   const now = deps.now ?? Date.now;
-  const searchLimiter = new RateLimiter(60, 60_000, now);
+  const searchLimiter = new RateLimiter(60, 60_000, now, deps.limits);
   const r = Router({ mergeParams: true });
   const search = [requireOrgPermission(deps, 'professionals.search'), requireApprovedOrg(deps)];
   const orgOf = (req: Request) => req.membership!.organizationId;
@@ -61,7 +61,7 @@ export function talentRoutes(deps: AppDeps) {
 
   // Each search uses one unit of the plan's monthly allowance (given back if the request fails). Not gated for organizations outside billing.
   r.get('/', validate({ params: orgParams }), ...search, requireEntitlementMw(deps, 'talent_search.enabled'), meterUsageMw(deps, 'talent_search.monthly_limit'), async (req, res) => {
-    if (!searchLimiter.allow(`talent:${req.auth!.userId}`)) throw new AppError('RATE_LIMITED', 'Too many searches. Try again shortly.');
+    if (!(await searchLimiter.allow(`talent:${req.auth!.userId}`))) throw new AppError('RATE_LIMITED', 'Too many searches. Try again shortly.');
     const q = searchQuery.parse(req.query);
     const orgId = orgOf(req);
     if (q.jobId) {

@@ -1,0 +1,22 @@
+# Build context for infrastructure/deployment/droplet/Dockerfile (the API image). Only the backend and the workspace package it
+# imports are needed; everything else keeps the context small and secrets out of the image.
+**/node_modules
+**/.next
+**/.next-*
+**/dist
+**/coverage
+**/.data
+.env
+.env.*
+!.env.example
+.git
+.github
+apps
+packages/ui
+packages/api-client
+documentation
+infrastructure/monitoring
+infrastructure/storage
+backend/tests
+**/*.test.ts
+**/*.md

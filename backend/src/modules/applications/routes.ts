@@ -48,10 +48,10 @@ const publicEligibility = (m: MatchResult) => ({ outcome: m.eligibility.outcome,
 export function applyRoutes(deps: AppDeps, needAuth: RequestHandler) {
   const { db } = deps;
   const now = deps.now ?? Date.now;
-  const limiter = new RateLimiter(30, 3600_000, now);
+  const limiter = new RateLimiter(30, 3600_000, now, deps.limits);
   const r = Router();
   r.post('/:id/apply', needAuth, validate({ params: idParams, body: applyBody }), async (req, res) => {
-    if (!limiter.allow(`apply:${req.auth!.userId}`)) throw new AppError('RATE_LIMITED', 'Too many applications. Try again later.');
+    if (!(await limiter.allow(`apply:${req.auth!.userId}`))) throw new AppError('RATE_LIMITED', 'Too many applications. Try again later.');
     const prof = await loadProfessional(db, req.auth!.userId);
     if (prof.account_status !== 'active') throw new AppError('FORBIDDEN', 'Your professional account is restricted.');
     const jobId = param(req, 'id');

@@ -1,0 +1,83 @@
+# The API on one server: Caddy (TLS, the only service with published ports), the API, and clamd on a private network.
+# Run from this folder on the Droplet:  docker compose up -d --build     (deploy.sh wraps that)
+# Configuration comes from ./.env (copy env.example; chmod 600). Nothing here contains a secret.
+
+name: bsm
+
+services:
+  caddy:
+    image: caddy:2.9-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      API_DOMAIN: ${API_DOMAIN:?set API_DOMAIN in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks: [edge]
+    depends_on: [api]
+    logging: &logging
+      driver: json-file
+      options: { max-size: "20m", max-file: "5" }
+
+  api:
+    build:
+      context: ../../..
+      dockerfile: infrastructure/deployment/droplet/Dockerfile
+    image: bsm-api:local
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      PORT: "4000"
+      # One instance on one server: per-process counters are shared by every request, so no Upstash is needed.
+      RATE_LIMIT_STORE: memory
+      CLAMAV_HOST: clamav
+      CLAMAV_PORT: "3310"
+    volumes:
+      # The managed database's CA certificate (see README); DATABASE_URL points at it with sslrootcert=/run/ca/db-ca.crt.
+      - ./db-ca.crt:/run/ca/db-ca.crt:ro
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    deploy:
+      resources:
+        limits: { memory: 768m }
+    networks: [edge, internal]
+    depends_on: [clamav]
+    logging: *logging
+
+  clamav:
+    image: clamav/clamav:1.4
+    restart: unless-stopped
+    # clamd needs about 1.3 GB for the signature database; freshclam inside the image refreshes signatures on its own.
+    volumes:
+      - clamav_db:/var/lib/clamav
+    environment:
+      CLAMAV_NO_MILTERD: "true"
+    deploy:
+      resources:
+        limits: { memory: 2g }
+    networks: [internal]   # never published: clamd has no authentication
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/clamdcheck.sh"]
+      interval: 60s
+      timeout: 10s
+      start_period: 300s
+      retries: 3
+    logging: *logging
+
+networks:
+  edge:
+  internal:
+    internal: true   # no route to the internet or the host's public interface
+
+volumes:
+  caddy_data:
+  caddy_config:
+  clamav_db:

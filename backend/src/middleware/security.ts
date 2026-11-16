@@ -1,6 +1,6 @@
 import type { RequestHandler } from 'express';
 import { AppError } from '../shared/errors.js';
-import { RateLimiter } from '../shared/rate-limit.js';
+import { RateLimiter, type RateLimitStore } from '../shared/rate-limit.js';
 
 /** Baseline response headers for an API (no HTML is served). */
 export const securityHeaders = (production: boolean): RequestHandler => (_req, res, next) => {
@@ -36,10 +36,12 @@ export const cors = (allowed: string[]): RequestHandler => (req, res, next) => {
 };
 
 /** Coarse per-IP abuse limit across the whole API, on top of the stricter per-route limits. */
-export const globalRateLimit = (max: number, windowMs: number, now?: () => number): RequestHandler => {
-  const limiter = new RateLimiter(max, windowMs, now);
-  return (req, _res, next) => {
-    if (!limiter.allow(`global:${req.ip ?? 'unknown'}`)) return next(new AppError('RATE_LIMITED', 'Too many requests. Try again later.'));
-    next();
+export const globalRateLimit = (max: number, windowMs: number, now?: () => number, store?: RateLimitStore): RequestHandler => {
+  const limiter = new RateLimiter(max, windowMs, now, store);
+  return async (req, _res, next) => {
+    try {
+      if (!(await limiter.allow(`global:${req.ip ?? 'unknown'}`))) return next(new AppError('RATE_LIMITED', 'Too many requests. Try again later.'));
+      next();
+    } catch (e) { next(e); }
   };
 };

@@ -8,7 +8,7 @@ import { runRecoveryUnderLease } from '../shift-recovery/scheduler.js';
 
 /**
  * Routes an external scheduler calls in place of the in-process timers in server.ts, which cannot run where the API is a
- * serverless function (Vercel Schedules, see vercel.json). Each pass takes the same database lease as the timer, so a scheduler
+ * serverless function (for example Vercel Schedules; unused on the Droplet, where the timers run). Each pass takes the same database lease as the timer, so a scheduler
  * and a long-running server can coexist, and running a pass twice is harmless. Access needs the shared secret in
  * `Authorization: Bearer …`; a signed-in session does not count. The same environment switches as the timers apply:
  * an interval of 0 means off.

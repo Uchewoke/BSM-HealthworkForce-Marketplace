@@ -25,7 +25,7 @@ const settingsBody = z.object({
 export function shiftRecoveryRoutes(deps: AppDeps) {
   const { db } = deps;
   const now = () => new Date((deps.now ?? Date.now)());
-  const runLimiter = new RateLimiter(10, 3600_000, deps.now ?? Date.now);
+  const runLimiter = new RateLimiter(10, 3600_000, deps.now ?? Date.now, deps.limits);
   const r = Router({ mergeParams: true });
   const read = requireOrgPermission(deps, 'applications.read');
   const manage = requireOrgPermission(deps, 'applications.manage');
@@ -88,7 +88,7 @@ export function shiftRecoveryRoutes(deps: AppDeps) {
   /** "Check now": runs recovery for this organization immediately instead of waiting for the next scheduled pass. */
   r.post('/run', validate({ params: orgParams }), manage, requireApprovedOrg(deps), async (req, res) => {
     await requireSignedOff(db, 'shift_recovery');
-    if (!runLimiter.allow(`recovery-run:${orgOf(req)}`)) throw new AppError('RATE_LIMITED', 'You have run this a lot in the last hour. It also runs automatically every few minutes.');
+    if (!(await runLimiter.allow(`recovery-run:${orgOf(req)}`))) throw new AppError('RATE_LIMITED', 'You have run this a lot in the last hour. It also runs automatically every few minutes.');
     const settings = await loadSettings(db, orgOf(req));
     if (!settings.enabled) throw new AppError('CONFLICT', 'Turn on unfilled-shift recovery in the settings first.');
     const summary = await runRecoveryUnderLease(deps, { now: now(), organizationId: orgOf(req), requestId: req.requestId });

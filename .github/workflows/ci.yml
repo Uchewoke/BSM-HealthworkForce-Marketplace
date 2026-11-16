@@ -1,0 +1,87 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Typecheck, test, build, audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # Test-only values; the suite generates its own random keys per app. Nothing here is a real secret.
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci --include=dev --workspaces --include-workspace-root
+
+      - name: Typecheck (all workspaces)
+        run: npm run typecheck
+
+      # Run per workspace rather than `npm test` at the root: the backend boots an embedded PostgreSQL per test file and the root
+      # command has stalled on some machines (see README "Checks").
+      - name: Test backend
+        run: npm test -w backend
+
+      - name: Test packages and apps
+        run: |
+          npm test -w @bsm/ui
+          npm test -w @bsm/api-client
+          npm test -w @bsm/permissions
+          npm test -w @bsm/web
+          npm test -w @bsm/admin
+
+      - name: Build web app
+        run: npm run build -w @bsm/web
+
+      - name: Build admin app
+        run: npm run build -w @bsm/admin
+
+      - name: Audit production dependencies
+        # Fails the build on a high or critical advisory in what actually ships. Dev tooling is audited separately (non-blocking) below.
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Audit dev dependencies (informational)
+        continue-on-error: true
+        run: npm audit --audit-level=critical
+
+  image:
+    name: Build API image
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build (not pushed; the Droplet builds its own image from the checked-out repository)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infrastructure/deployment/droplet/Dockerfile
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -26,9 +26,9 @@ export async function hashPassword(password: string): Promise<string> {
 export function createAuthService(deps: CoreDeps) {
   const { db, config, email } = deps;
   const now = deps.now ?? Date.now;
-  const ipLimiter = new RateLimiter(30, 15 * 60_000, now);
-  const accountLimiter = new RateLimiter(10, 15 * 60_000, now);
-  const signupLimiter = new RateLimiter(10, 3600_000, now);
+  const ipLimiter = new RateLimiter(30, 15 * 60_000, now, deps.limits);
+  const accountLimiter = new RateLimiter(10, 15 * 60_000, now, deps.limits);
+  const signupLimiter = new RateLimiter(10, 3600_000, now, deps.limits);
   // Verified against when the account does not exist so timing doesn't reveal it.
   const dummyHash = hashPassword('not-a-real-password-for-timing');
 
@@ -62,7 +62,7 @@ export function createAuthService(deps: CoreDeps) {
 
     /** Always behaves the same whether or not the address is already registered (no account enumeration). */
     async register(input: { email: string; password: string; fullName: string }, ip: string, requestId: string) {
-      if (!signupLimiter.allow(`signup:${ip}`)) throw new AppError('RATE_LIMITED', 'Too many attempts. Try again later.');
+      if (!(await signupLimiter.allow(`signup:${ip}`))) throw new AppError('RATE_LIMITED', 'Too many attempts. Try again later.');
       const existing = await db.query('SELECT 1 FROM users WHERE lower(email) = $1', [input.email]);
       if (existing.length) {
         await audit(db, { action: 'auth.register_duplicate', requestId });
@@ -89,7 +89,7 @@ export function createAuthService(deps: CoreDeps) {
     },
 
     async login(input: { email: string; password: string; totpCode?: string }, ip: string, requestId: string) {
-      if (!ipLimiter.allow(`ip:${ip}`) || !accountLimiter.allow(`acct:${input.email}`)) {
+      if (!(await ipLimiter.allow(`ip:${ip}`)) || !(await accountLimiter.allow(`acct:${input.email}`))) {
         throw new AppError('RATE_LIMITED', 'Too many attempts. Try again later.');
       }
       const invalid = () => new AppError('UNAUTHENTICATED', 'Invalid email or password.');
@@ -155,7 +155,7 @@ export function createAuthService(deps: CoreDeps) {
     },
 
     async forgotPassword(emailAddr: string, ip: string, requestId: string) {
-      if (!signupLimiter.allow(`forgot:${ip}`)) throw new AppError('RATE_LIMITED', 'Too many attempts. Try again later.');
+      if (!(await signupLimiter.allow(`forgot:${ip}`))) throw new AppError('RATE_LIMITED', 'Too many attempts. Try again later.');
       const user = (await db.query<{ id: string }>('SELECT id FROM users WHERE lower(email) = $1 AND status = \'active\'', [emailAddr]))[0];
       if (!user) return; // same response either way
       const token = await issueToken(db, user.id, 'password_reset');

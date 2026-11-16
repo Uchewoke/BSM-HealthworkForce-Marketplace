@@ -177,7 +177,7 @@ const requestListQuery = z.object({ status: z.enum(['pending', 'accepted', 'decl
 export function facilityExchangeRoutes(deps: AppDeps) {
   const { db } = deps;
   const now = () => new Date((deps.now ?? Date.now)());
-  const searchLimiter = new RateLimiter(60, 60_000, deps.now ?? Date.now);
+  const searchLimiter = new RateLimiter(60, 60_000, deps.now ?? Date.now, deps.limits);
   const r = Router({ mergeParams: true });
   const orgOf = (req: Request) => req.membership!.organizationId;
   const search = [requireOrgPermission(deps, 'professionals.search'), requireApprovedOrg(deps)];
@@ -247,7 +247,7 @@ export function facilityExchangeRoutes(deps: AppDeps) {
   });
 
   r.get('/pool', validate({ params: orgParams }), ...search, async (req, res) => {
-    if (!searchLimiter.allow(`pool:${req.auth!.userId}`)) throw new AppError('RATE_LIMITED', 'Too many searches. Try again shortly.');
+    if (!(await searchLimiter.allow(`pool:${req.auth!.userId}`))) throw new AppError('RATE_LIMITED', 'Too many searches. Try again shortly.');
     const q = poolQuery.parse(req.query);
     const orgId = orgOf(req);
     await requireParticipation(orgId, q.regionId);
