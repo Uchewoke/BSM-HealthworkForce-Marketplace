@@ -12,6 +12,7 @@ and can be rebuilt from this folder.
 | `env.example` | Template for `.env` on the Droplet (the only file with secrets; never commit it) |
 | `cloud-init.yml` | First-boot hardening: deploy user, key-only SSH, ufw, fail2ban, unattended upgrades, Docker |
 | `deploy.sh` | Pull, rebuild, restart, wait for healthy, check `/ready` |
+| `compose.nginx.yml`, `nginx-api.conf` | For a Droplet that already runs nginx: Caddy off, API on `127.0.0.1:4000`, nginx in front |
 
 ## One-time setup
 
@@ -44,6 +45,31 @@ and can be rebuilt from this folder.
 5. **Verify** (record the results in the production checklist): sign in from the real web app, upload a document and confirm it
    is stored and labelled not scanned, send one real verification email, and confirm `curl -I http://api.example.com` redirects
    to HTTPS. The API logs a warning at start-up that no scanner is configured; that is expected until the scanner is on.
+
+## On a Droplet that already runs nginx (shared with another app)
+
+Use this instead of a new Droplet when nginx already listens on ports 80 and 443. Skip `cloud-init.yml`; do its relevant parts by hand.
+
+1. **Swap and Docker** (as root or with sudo). A 2 GB Droplet without swap can run out of memory while the image builds:
+   ```bash
+   fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
+   echo '/swapfile none swap sw 0 0' >> /etc/fstab
+   install -m 0755 -d /etc/apt/keyrings
+   curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+   echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo $VERSION_CODENAME) stable" > /etc/apt/sources.list.d/docker.list
+   apt-get update && apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+   ```
+2. **Clone and configure** as in the one-time setup above, then add one line to `.env`:
+   `COMPOSE_FILE=compose.yml:compose.nginx.yml`. Caddy is not started, and the API listens on `127.0.0.1:4000` only, so the
+   firewall needs no change and the other app's ports are untouched.
+3. **DNS** A record for `API_DOMAIN` pointing at this Droplet, then `./deploy.sh`. The final `/ready` check fails until step 4
+   is done; `curl -fsS http://127.0.0.1:4000/api/v1/ready` confirms the API itself is up.
+4. **nginx site and certificate:** follow the commands at the top of `nginx-api.conf` (needs certbot: `apt-get install -y certbot
+   python3-certbot-nginx` if the other app does not already use it). Then `./deploy.sh` again passes end to end.
+5. Continue with steps 3 to 5 of the one-time setup (administrator, `NEXT_PUBLIC_API_URL`, verify).
+
+Both apps share one server, so a compromise of either exposes the other: keep separate folders and `.env` files, keep
+unattended upgrades on (`systemctl status unattended-upgrades`), and give the other app no access to `/opt/bsm`.
 
 ## Turning on virus scanning later
 

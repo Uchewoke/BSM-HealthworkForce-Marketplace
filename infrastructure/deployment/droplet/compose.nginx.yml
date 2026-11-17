@@ -1,0 +1,9 @@
+# For a Droplet that already runs nginx on ports 80/443 (for example alongside another app). Enable it from .env with
+#   COMPOSE_FILE=compose.yml:compose.nginx.yml
+# Caddy stays off and nginx terminates TLS and forwards api.<domain> to the API on the loopback port below (nginx-api.conf).
+services:
+  caddy:
+    profiles: [caddy]   # not started: nginx on the host owns ports 80 and 443
+  api:
+    ports:
+      - "127.0.0.1:4000:4000"   # loopback only: reachable from nginx on this host, never from the internet
