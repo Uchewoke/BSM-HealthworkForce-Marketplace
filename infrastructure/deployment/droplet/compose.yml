@@ -39,8 +39,9 @@ services:
       CLAMAV_HOST: clamav
       CLAMAV_PORT: "3310"
     volumes:
-      # The managed database's CA certificate (see README); DATABASE_URL points at it with sslrootcert=/run/ca/db-ca.crt.
-      - ./db-ca.crt:/run/ca/db-ca.crt:ro
+      # Optional private CA certificates for the database (DigitalOcean Managed PostgreSQL: certs/db-ca.crt, referenced from
+      # DATABASE_URL as sslrootcert=/run/ca/db-ca.crt). Neon uses a public CA and needs nothing here; the folder may stay empty.
+      - ./certs:/run/ca:ro
     read_only: true
     tmpfs: [/tmp]
     security_opt: [no-new-privileges:true]

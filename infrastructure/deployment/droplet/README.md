@@ -1,7 +1,7 @@
 # API on a DigitalOcean Droplet (Docker Compose)
 
 The two Next.js apps stay on Vercel. The API runs as one long-running container on a Droplet, behind Caddy for TLS, with a
-private clamd beside it. Everything the API stores lives elsewhere (Managed PostgreSQL, Spaces), so the Droplet holds no data
+private clamd beside it. Everything the API stores lives elsewhere (PostgreSQL on Neon, documents in Spaces), so the Droplet holds no data
 and can be rebuilt from this folder.
 
 | File | Purpose |
@@ -15,21 +15,21 @@ and can be rebuilt from this folder.
 
 ## One-time setup
 
-1. **DigitalOcean resources.** Managed PostgreSQL (add the Droplet as a trusted source once it exists; use the connection-pool
-   endpoint in transaction mode, pool size 10 or more, since the API's pool is 10), a private Space with its own access key
-   (`infrastructure/storage/README.md`), and the Droplet: Ubuntu 24.04, **4 GB RAM** (clamd uses about 1.3 GB), same region as the
-   database, with `cloud-init.yml` pasted into *User data* after replacing the SSH key. DNS: an A record for `API_DOMAIN`
+1. **Resources.** A Neon project (free plan) on AWS in the region nearest the Droplet (for DigitalOcean NYC, `us-east-1`);
+   copy the **pooled** connection string. A private DigitalOcean Space with its own access key (`infrastructure/storage/README.md`),
+   and the Droplet: Ubuntu 24.04, **4 GB RAM** (clamd uses about 1.3 GB), with `cloud-init.yml` pasted into *User data* after
+   replacing the SSH key. (DigitalOcean Managed PostgreSQL works too: same region as the Droplet, the Droplet as its only
+   trusted source, the connection-pool endpoint, and its CA certificate in `certs/`; see `env.example`.) DNS: an A record for `API_DOMAIN`
    (for example `api.example.com`) pointing at the Droplet's IP, before the first start, so Caddy can obtain the certificate.
 2. **Clone and configure** on the Droplet:
    ```bash
    ssh deploy@<ip>
    git clone <repository url> /opt/bsm && cd /opt/bsm/infrastructure/deployment/droplet
    cp env.example .env && chmod 600 .env && nano .env        # fill every value
-   # CA certificate of the database cluster (DigitalOcean control panel, "Download CA certificate"):
-   nano db-ca.crt && chmod 644 db-ca.crt
    ```
-   `DATABASE_URL` uses `sslmode=verify-full&sslrootcert=/run/ca/db-ca.crt`; the certificate is mounted at that path. With
-   this `pg` version plain `sslmode=require` also verifies the chain, so the CA file is needed either way.
+   With Neon, `DATABASE_URL` is the pooled string with `sslmode=require`; this `pg` version verifies Neon's public certificate
+   and host name, and no CA file is needed. With DigitalOcean Managed PostgreSQL, save its CA as `certs/db-ca.crt` and use
+   `sslmode=verify-full&sslrootcert=/run/ca/db-ca.crt`.
 3. **First start:** `./deploy.sh`. It builds the image (two or three minutes), starts the three containers, waits until the
    API is healthy and calls `/api/v1/ready`. The API applies pending migrations when it starts. Then create the first administrator
    inside the container:

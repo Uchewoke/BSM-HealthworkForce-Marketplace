@@ -8,3 +8,4 @@ coverage/
 .data/
 *.tsbuildinfo
 .next-*/
+infrastructure/deployment/droplet/certs/

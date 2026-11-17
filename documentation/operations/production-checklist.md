@@ -26,10 +26,12 @@ These are enforced in code, not policy. Until they are done, the API container r
 - [x] **BLOCKER. Wire the adapters in `createRuntimeDeps`.** Done 2026-11-16: production boots when email, storage and the
       rate-limit store (shared, or `RATE_LIMIT_STORE=memory` on the single Droplet process) are configured and otherwise throws one
       error naming every missing variable (`tests/runtime.test.ts`).
-- [ ] **BLOCKER. `DATABASE_URL` set to DigitalOcean Managed PostgreSQL**, connection-pool endpoint, with
-      `sslmode=verify-full&sslrootcert=/run/ca/db-ca.crt` and the cluster's CA saved as `droplet/db-ca.crt` (the pool in
-      `backend/src/db/index.ts` passes no `ssl` option; this `pg` version verifies the chain even for `sslmode=require`, so the CA
-      is needed either way). Add the Droplet as a trusted source on the cluster so nothing else can reach it.
+- [ ] **BLOCKER. `DATABASE_URL` set to Neon** (free plan, chosen 2026-11-17): the pooled connection string (host contains
+      `-pooler`) with `sslmode=require`. The pool in `backend/src/db/index.ts` passes no `ssl` option; this `pg` version verifies
+      Neon's public certificate and host name for `sslmode=require`. The code holds no session state (no advisory locks, no named
+      prepared statements), so the transaction-mode pooler is safe. Neon is reachable from the internet with the password, so the
+      password is the only network control: keep it only in `droplet/.env`. Set `SHIFT_RECOVERY_INTERVAL_MINUTES=30` (not 5) so the
+      free compute allowance is not used up by the timer keeping the database awake.
 - [ ] **BLOCKER. Generate and set `MFA_ENCRYPTION_KEY` and `FIELD_ENCRYPTION_KEY`** (`openssl rand -base64 32`, two different
       values). Store copies in a secrets manager separate from database backups. Losing the field key makes credential numbers
       unrecoverable; losing the MFA key forces every MFA user to re-enroll.
@@ -61,8 +63,8 @@ These are enforced in code, not policy. Until they are done, the API container r
       for the Preview environment. **Scope `NEXT_PUBLIC_API_URL` to Production.**
 - [ ] **REQUIRED.** Migrations: the server applies them at start-up, so every `deploy.sh` that carries a migration is preceded by
       a backup (runbook §3) and run by a named person, not a hook.
-- [ ] **REQUIRED.** Droplet in the same region as the database cluster; the Droplet is the cluster's only trusted source; Spaces
-      bucket in the same region.
+- [ ] **REQUIRED.** Neon project on AWS in the region nearest the Droplet (DigitalOcean NYC: `us-east-1`); Spaces bucket in the
+      Droplet's region.
 - [ ] **REQUIRED.** Droplet hardening from `cloud-init.yml` verified after first boot: `ufw status` shows only 22, 80, 443;
       `sshd -T | grep passwordauthentication` says no; `fail2ban-client status sshd` is active; port 3310 is closed from outside.
 - [ ] **RECOMMENDED.** Turn on Vercel Web Application Firewall / attack challenge mode for the apps. Consider DigitalOcean's
@@ -70,8 +72,9 @@ These are enforced in code, not policy. Until they are done, the API container r
 
 ## 2. Data layer
 
-- [ ] **REQUIRED.** Managed PostgreSQL with automated daily snapshots **and** point-in-time recovery, encrypted at rest, 14+
-      days retained, copies in a second region or account (runbook §3).
+- [ ] **REQUIRED.** Backups with 14+ days retained and copies in a second account (runbook §3). **Neon's free plan does not meet
+      this:** its restore window is short (hours, not weeks). Until the paid plan, run a nightly `pg_dump` to the Space (or a second
+      bucket) and keep 14 days. Before real patient-adjacent data or a pilot, move to a paid Neon plan or DigitalOcean Managed PostgreSQL.
 - [ ] **REQUIRED.** **Restore drill performed on real PostgreSQL** and recorded (date, duration, result). Today restore has only
       been validated on the embedded PGlite. The drill: `pg_restore` into an empty database, run `migrate` (expect "No pending
       migrations"), hit `/ready`, sign in as a known user, confirm `UPDATE audit_logs` is still blocked by the trigger, compare
@@ -197,13 +200,13 @@ counsel's written answers. Record the decision, the build SHA, and who approved 
 
 | Variable | Where | Notes |
 |---|---|---|
-| `DATABASE_URL` | backend | Managed PostgreSQL, pooler endpoint, `sslmode=require` |
+| `DATABASE_URL` | droplet `.env` | Neon pooled connection string, `sslmode=require` |
 | `MFA_ENCRYPTION_KEY` | backend | 32 bytes base64; separate backup |
 | `FIELD_ENCRYPTION_KEY` | backend | 32 bytes base64, different value; separate backup |
 | `WEB_URL`, `ADMIN_URL` | backend | Public origins; feed CORS, Origin check, email links |
 | `API_DOMAIN` | droplet `.env` | The API's hostname, a subdomain of the apps' domain; Caddy gets its certificate |
 | `CRON_SECRET` | backend | Unset on the Droplet (in-process timers); only for an external scheduler |
-| `SHIFT_RECOVERY_INTERVAL_MINUTES` | backend | Keep default 5 (schedule runs every 15) or 0 to disable |
+| `SHIFT_RECOVERY_INTERVAL_MINUTES` | droplet `.env` | 30 on Neon's free plan, so the database can sleep; 0 disables |
 | `MATCH_RETENTION_INTERVAL_HOURS` | backend | **0 on first deploy**; enable per the retention deployment doc |
 | `EMAIL_PROVIDER`, `EMAIL_FROM`, `RESEND_API_KEY` or `POSTMARK_SERVER_TOKEN` | backend | Required; domain needs SPF, DKIM, DMARC |
 | `STORAGE_BUCKET`, `STORAGE_REGION`, `STORAGE_ENDPOINT`, `STORAGE_ACCESS_KEY_ID`, `STORAGE_SECRET_ACCESS_KEY` | backend | Required; private bucket, least-privilege key |

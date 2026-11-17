@@ -6,8 +6,8 @@ Two targets (decided 2026-11-16):
   (`web`, at `/`) and the staff app (`admin`, at `/admin`). Vercel builds each from its own folder and routes requests by the
   top-level `rewrites`; the admin app is built with `basePath: /admin`.
 - **The API on a DigitalOcean Droplet** as one long-running container behind Caddy, with a private clamd beside it:
-  `droplet/` (Dockerfile, Compose file, cloud-init, deploy script, README with the step-by-step setup). Managed PostgreSQL and
-  Spaces hold the data; the Droplet holds none.
+  `droplet/` (Dockerfile, Compose file, cloud-init, deploy script, README with the step-by-step setup). PostgreSQL on Neon
+  (free plan, decided 2026-11-17 to save cost) and a DigitalOcean Space hold the data; the Droplet holds none.
 
 The browser calls the API cross-origin at `NEXT_PUBLIC_API_URL` (for example `https://api.example.com/api/v1`), with credentials.
 The API allows exactly `WEB_URL` and `ADMIN_URL` (CORS and the Origin check) and its session cookie is `SameSite=Lax`, which
@@ -38,8 +38,8 @@ have been built and validated locally; the stack has not yet been run against re
 
 ## Environment variables
 
-API (`droplet/.env` on the Droplet, from `droplet/env.example`): `API_DOMAIN`, `DATABASE_URL` (Managed PostgreSQL, connection-pool
-endpoint, `sslmode=verify-full&sslrootcert=/run/ca/db-ca.crt` with the cluster's CA saved as `droplet/db-ca.crt`), `MFA_ENCRYPTION_KEY`,
+API (`droplet/.env` on the Droplet, from `droplet/env.example`): `API_DOMAIN`, `DATABASE_URL` (Neon's pooled connection string with
+`sslmode=require`; for DigitalOcean Managed PostgreSQL see `droplet/env.example`), `MFA_ENCRYPTION_KEY`,
 `FIELD_ENCRYPTION_KEY`, `WEB_URL` and `ADMIN_URL` (the Vercel origin, e.g. `https://app.example.com` and `https://app.example.com/admin`),
 the email and storage settings above, plus the optional providers (Stripe, Anthropic). No `CRON_SECRET` is needed: the timers run in-process.
 

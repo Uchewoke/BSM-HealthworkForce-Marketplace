@@ -9,7 +9,10 @@ repo="$(cd "$here/../../.." && pwd)"
 ref="${1:-main}"
 
 [ -f "$here/.env" ] || { echo "missing $here/.env (copy env.example)"; exit 1; }
-[ -f "$here/db-ca.crt" ] || { echo "missing $here/db-ca.crt (the managed database's CA certificate)"; exit 1; }
+mkdir -p "$here/certs"
+# A DATABASE_URL that names a private CA (DigitalOcean Managed PostgreSQL) needs that file; Neon's public CA needs none.
+ca="$(grep -E '^DATABASE_URL=' "$here/.env" | grep -oE 'sslrootcert=/run/ca/[^&"]+' | sed 's|sslrootcert=/run/ca/||' || true)"
+if [ -n "$ca" ] && [ ! -f "$here/certs/$ca" ]; then echo "DATABASE_URL names sslrootcert but $here/certs/$ca is missing"; exit 1; fi
 
 cd "$repo"
 git fetch --prune origin
