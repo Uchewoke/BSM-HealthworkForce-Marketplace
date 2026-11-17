@@ -110,14 +110,16 @@ Still to do:
       addresses. Do not put another proxy (Cloudflare, a load balancer) in front without raising the hop count.
 - [x] **REQUIRED. Key-rotation script.** Done 2026-11-16: `npm run rotate-keys -w backend` (dry run by default, `--apply` to
       write, repeatable). Procedure in runbook §8. Still to do by you: rehearse it once in staging.
-- [ ] **REQUIRED. Dependency advisory in the production tree.** `npm audit --omit=dev` on 2026-11-16: `next@15.5.28` bundles a
-      vulnerable `postcss` (1 high, 1 moderate: XSS via `</style>` and source-map file disclosure). The fix npm offers is
-      `next@16.4.6` (breaking). Decide: upgrade to Next 16 (ASSUMPTIONS #3 says "say if Next 16 is required"), or document why
-      the advisories do not apply (the app does not process untrusted CSS at runtime) and set a date to revisit. Dev tree also has
+- [x] **REQUIRED. Dependency advisory in the production tree.** `npm audit --omit=dev` on 2026-11-16: `next@15.5.28` pinned a
+      vulnerable `postcss` 8.4.31 (1 high, 1 moderate: XSS via `</style>` and source-map file disclosure). Done 2026-11-17: the
+      root `package.json` `overrides` forces `postcss` to a patched 8.5 release everywhere, so Next 16 is not required for this.
+      Still to do by you: watch the first CI run after the change (both Next builds must still pass). Dev tree also has
       2 critical in `vitest`/`tinypool`; not shipped, but fix in CI.
 - [x] **REQUIRED. CI pipeline.** Done 2026-11-16: `.github/workflows/ci.yml` runs typecheck, tests per workspace, both builds,
-      `npm audit --omit=dev --audit-level=high` and gitleaks on every PR and push to main. Still to do by you: push, confirm the first
-      run is green, and make the two jobs required status checks on `main` in the repository settings.
+      `npm audit --omit=dev --audit-level=high`, a Docker build of the API image, and a gitleaks scan of the whole history on every
+      PR and push to main. First run 2026-11-17: typecheck, tests, both builds and the image build passed; the audit (postcss, fixed
+      above) and the secret scan (gitleaks-action cannot handle a root "before" commit; replaced by a full-history scan) failed and
+      were fixed. Still to do by you: confirm the next run is green, and make the three jobs required status checks on `main`.
 - [ ] **REQUIRED. Secrets hygiene.** `backend/.env` exists locally and is git-ignored (verified: not tracked). Confirm no
       secrets in Vercel build logs, rotate anything that was ever pasted into a chat or ticket, and enable Vercel's sensitive env
       var mode so values cannot be read back from the dashboard.
