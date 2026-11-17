@@ -1,13 +1,13 @@
 # API on a DigitalOcean Droplet (Docker Compose)
 
-The two Next.js apps stay on Vercel. The API runs as one long-running container on a Droplet, behind Caddy for TLS, with a
-private clamd beside it. Everything the API stores lives elsewhere (PostgreSQL on Neon, documents in Spaces), so the Droplet holds no data
+The two Next.js apps stay on Vercel. The API runs as one long-running container on a Droplet, behind Caddy for TLS. A private
+clamd for virus scanning can run beside it; it is **off for now** (decided 2026-11-17) and turned on with one setting (below). Everything the API stores lives elsewhere (PostgreSQL on Neon, documents in Spaces), so the Droplet holds no data
 and can be rebuilt from this folder.
 
 | File | Purpose |
 |---|---|
 | `Dockerfile` | The API image: Node 22, the backend plus `@bsm/permissions`, run with tsx (build context is the repository root) |
-| `compose.yml` | `caddy` (ports 80/443), `api`, `clamav` (private network only) |
+| `compose.yml` | `caddy` (ports 80/443), `api`, and `clamav` (private network only, `scanner` profile, off by default) |
 | `Caddyfile` | TLS for `API_DOMAIN`, HTTP to HTTPS redirect, 12 MB body cap, JSON access log |
 | `env.example` | Template for `.env` on the Droplet (the only file with secrets; never commit it) |
 | `cloud-init.yml` | First-boot hardening: deploy user, key-only SSH, ufw, fail2ban, unattended upgrades, Docker |
@@ -17,7 +17,7 @@ and can be rebuilt from this folder.
 
 1. **Resources.** A Neon project (free plan) on AWS in the region nearest the Droplet (for DigitalOcean NYC, `us-east-1`);
    copy the **pooled** connection string. A private DigitalOcean Space with its own access key (`infrastructure/storage/README.md`),
-   and the Droplet: Ubuntu 24.04, **4 GB RAM** (clamd uses about 1.3 GB), with `cloud-init.yml` pasted into *User data* after
+   and the Droplet: Ubuntu 24.04, **2 GB RAM** (4 GB once the scanner is on: clamd uses about 1.3 GB), with `cloud-init.yml` pasted into *User data* after
    replacing the SSH key. (DigitalOcean Managed PostgreSQL works too: same region as the Droplet, the Droplet as its only
    trusted source, the connection-pool endpoint, and its CA certificate in `certs/`; see `env.example`.) DNS: an A record for `API_DOMAIN`
    (for example `api.example.com`) pointing at the Droplet's IP, before the first start, so Caddy can obtain the certificate.
@@ -41,10 +41,17 @@ and can be rebuilt from this folder.
    check), and the session cookie is `SameSite=Lax`, which browsers send between `app.example.com` and `api.example.com` because
    they are the same site. Vercel preview deployments (`*.vercel.app`) are a different site and cannot sign in against this
    API; point previews at a staging Droplet with their own `WEB_URL`, or do not use previews for signed-in flows.
-5. **Verify** (record the results in the production checklist): sign in from the real web app, upload the EICAR test file and
-   confirm it is rejected (`infected`), send one real verification email, confirm `curl -I http://api.example.com` redirects to
-   HTTPS, and confirm that port 3310 on the Droplet's public IP is closed from outside (`nc -zv <droplet ip> 3310` must fail) while
-   `docker compose logs api` shows no clamd errors after the EICAR upload.
+5. **Verify** (record the results in the production checklist): sign in from the real web app, upload a document and confirm it
+   is stored and labelled not scanned, send one real verification email, and confirm `curl -I http://api.example.com` redirects
+   to HTTPS. The API logs a warning at start-up that no scanner is configured; that is expected until the scanner is on.
+
+## Turning on virus scanning later
+
+1. Resize the Droplet to 4 GB RAM (DigitalOcean: the Droplet, Resize, CPU and RAM only; it powers off for a minute or two).
+2. In `.env` uncomment `COMPOSE_PROFILES=scanner` and `CLAMAV_HOST=clamav`, then run `./deploy.sh`. The first start of `clamav`
+   downloads signatures for a few minutes; `docker compose ps` shows it healthy when ready.
+3. Upload the EICAR test file and confirm it is rejected as infected, and confirm port 3310 on the Droplet's public IP is closed
+   from outside (`nc -zv <droplet ip> 3310` must fail).
 
 ## Every deploy
 
@@ -62,7 +69,7 @@ the current scale. Roll back by deploying the previous ref; if a migration was a
 - Logs: `docker compose logs -f api` (JSON lines from pino), `docker compose logs caddy` (access log). Ship them off the box
   (`infrastructure/monitoring/README.md`); the json-file driver keeps 100 MB per container locally.
 - Health: `GET /api/v1/health` (process up) and `/ready` (database answers) through Caddy; use them for the external uptime monitor.
-- Signatures: the `clamav` container refreshes them itself (freshclam); `docker compose logs clamav` shows the updates.
+- Signatures (scanner on): the `clamav` container refreshes them itself (freshclam); `docker compose logs clamav` shows the updates.
 - OS patches apply automatically with a reboot at 04:30 UTC when needed; `restart: unless-stopped` brings the stack back.
 - Image updates: `docker compose pull caddy clamav && docker compose up -d` monthly, after reading their release notes.
 - Scaling out (a second API instance or server) is not covered here: the rate limiter runs in memory (`RATE_LIMIT_STORE=memory`),

@@ -5,7 +5,7 @@ Two targets (decided 2026-11-16):
 - **The apps on Vercel**, one project with two services (`vercel.json` at the repository root): the public site and portal
   (`web`, at `/`) and the staff app (`admin`, at `/admin`). Vercel builds each from its own folder and routes requests by the
   top-level `rewrites`; the admin app is built with `basePath: /admin`.
-- **The API on a DigitalOcean Droplet** as one long-running container behind Caddy, with a private clamd beside it:
+- **The API on a DigitalOcean Droplet** as one long-running container behind Caddy (a private clamd beside it is optional, off for now):
   `droplet/` (Dockerfile, Compose file, cloud-init, deploy script, README with the step-by-step setup). PostgreSQL on Neon
   (free plan, decided 2026-11-17 to save cost) and a DigitalOcean Space hold the data; the Droplet holds none.
 
@@ -32,7 +32,8 @@ browsers send between `app.example.com` and `api.example.com` (same site). Keep 
 
 `backend/src/runtime.ts` refuses to start with `NODE_ENV=production` until an email provider (`EMAIL_PROVIDER=resend|postmark`,
 `EMAIL_FROM`, the provider key) and a private S3-compatible bucket (`STORAGE_BUCKET` and friends) are set, and names each missing
-variable in the error. The Compose file sets `RATE_LIMIT_STORE=memory` (one process on one server) and `CLAMAV_HOST=clamav`.
+variable in the error. The Compose file sets `RATE_LIMIT_STORE=memory` (one process on one server). Virus scanning is off until `COMPOSE_PROFILES=scanner`
+and `CLAMAV_HOST=clamav` are set in `droplet/.env`; without it uploads are stored and labelled `not_scanned`.
 See `.env.example` for every variable and `droplet/env.example` for the values the Droplet needs. The Dockerfile and Compose file
 have been built and validated locally; the stack has not yet been run against real DigitalOcean resources.
 

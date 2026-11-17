@@ -1,6 +1,7 @@
 #cloud-config
 # First-boot configuration for the API Droplet. Paste this as "User data" when creating the Droplet (Ubuntu 24.04 LTS,
-# 4 GB RAM or more: clamd alone needs about 1.3 GB). Replace the SSH public key below with your own before use.
+# 2 GB RAM without virus scanning, 4 GB once the scanner profile is on: clamd alone needs about 1.3 GB). Replace the SSH public
+# key below with your own before use.
 # What it does: a non-root user that can run Docker, SSH by key only, a firewall that admits only 22/80/443, unattended
 # security updates, fail2ban for SSH, and Docker Engine with the Compose plugin from Docker's repository.
 

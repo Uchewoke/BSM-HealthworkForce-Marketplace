@@ -1,4 +1,5 @@
-# The API on one server: Caddy (TLS, the only service with published ports), the API, and clamd on a private network.
+# The API on one server: Caddy (TLS, the only service with published ports) and the API. clamd (virus scanning) is optional and
+# off by default: it starts only with the "scanner" profile (COMPOSE_PROFILES=scanner and CLAMAV_HOST=clamav in .env; see README).
 # Run from this folder on the Droplet:  docker compose up -d --build     (deploy.sh wraps that)
 # Configuration comes from ./.env (copy env.example; chmod 600). Nothing here contains a secret.
 
@@ -36,8 +37,7 @@ services:
       PORT: "4000"
       # One instance on one server: per-process counters are shared by every request, so no Upstash is needed.
       RATE_LIMIT_STORE: memory
-      CLAMAV_HOST: clamav
-      CLAMAV_PORT: "3310"
+      # CLAMAV_HOST comes from .env: unset, uploads are stored and labelled not_scanned; "clamav" uses the scanner profile below.
     volumes:
       # Optional private CA certificates for the database (DigitalOcean Managed PostgreSQL: certs/db-ca.crt, referenced from
       # DATABASE_URL as sslrootcert=/run/ca/db-ca.crt). Neon uses a public CA and needs nothing here; the folder may stay empty.
@@ -50,11 +50,11 @@ services:
       resources:
         limits: { memory: 768m }
     networks: [edge, internal]
-    depends_on: [clamav]
     logging: *logging
 
   clamav:
     image: clamav/clamav:1.4
+    profiles: [scanner]   # not started unless COMPOSE_PROFILES includes "scanner"; needs a 4 GB Droplet
     restart: unless-stopped
     # clamd needs about 1.3 GB for the signature database; freshclam inside the image refreshes signatures on its own.
     volumes:

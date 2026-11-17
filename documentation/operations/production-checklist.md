@@ -43,7 +43,7 @@ These are enforced in code, not policy. Until they are done, the API container r
 
 - [x] **REQUIRED. Droplet stack written.** Done 2026-11-16: `infrastructure/deployment/droplet/` (Dockerfile, Compose with Caddy and
       a private clamd, cloud-init hardening, `deploy.sh`, README). Image built and Compose/Caddyfile validated locally; not yet run
-      on a real Droplet. Still to do by you: follow the README's one-time setup (4 GB Droplet, same region as the database, DNS A
+      on a real Droplet. Still to do by you: follow the README's one-time setup (2 GB Droplet while the scanner is off, DNS A
       record for `API_DOMAIN`), then record the first successful `deploy.sh` here.
 - [ ] **REQUIRED.** Vercel project uses **Framework Preset: Services**, Root Directory empty, no Build/Install override. The
       deployment log must show two builds (`web`, `admin`). `NEXT_PUBLIC_API_URL=https://api.<domain>/api/v1` set for Production.
@@ -66,7 +66,7 @@ These are enforced in code, not policy. Until they are done, the API container r
 - [ ] **REQUIRED.** Neon project on AWS in the region nearest the Droplet (DigitalOcean NYC: `us-east-1`); Spaces bucket in the
       Droplet's region.
 - [ ] **REQUIRED.** Droplet hardening from `cloud-init.yml` verified after first boot: `ufw status` shows only 22, 80, 443;
-      `sshd -T | grep passwordauthentication` says no; `fail2ban-client status sshd` is active; port 3310 is closed from outside.
+      `sshd -T | grep passwordauthentication` says no; `fail2ban-client status sshd` is active; once the scanner is on, port 3310 is closed from outside.
 - [ ] **RECOMMENDED.** Turn on Vercel Web Application Firewall / attack challenge mode for the apps. Consider DigitalOcean's
       Cloud Firewall in front of the Droplet as a second layer to ufw (same three ports).
 
@@ -105,8 +105,9 @@ Still to do:
       long-running server. A store outage fails open with an error log; account lockout is database-backed and unaffected. Still
       to do by you: create the Upstash database and set the two variables; alert on the "rate-limit store unavailable" log line.
 - [~] **REQUIRED. Malware scanning.** Adapter done 2026-11-16: `ClamAvScanner` (`CLAMAV_HOST`, `CLAMAV_PORT`), tested against a
-      protocol stub only. The Droplet stack runs clamd as a container on an internal network with `CLAMAV_HOST=clamav` preset.
-      Still to do by you: upload the EICAR test file in staging and confirm it is rejected. Decide and document whether reviewers
+      protocol stub only. The Droplet stack can run clamd as a container on an internal network (`scanner` profile). **Deferred by
+      the owner on 2026-11-17** to keep the Droplet at 2 GB: uploads are stored and labelled `not_scanned` until then. Still to do by
+      you: turn it on (droplet README, "Turning on virus scanning later"), upload the EICAR test file and confirm it is rejected. Decide and document whether reviewers
       may open `not_scanned` files; today the UI labels them.
 - [ ] **REQUIRED. Trust-proxy correctness.** `app.set('trust proxy', 1)` in production assumes exactly one proxy hop, which is
       Caddy on the Droplet. Confirm after the first deploy that the request log shows real client IPs, not `172.x` container
@@ -211,7 +212,7 @@ counsel's written answers. Record the decision, the build SHA, and who approved 
 | `EMAIL_PROVIDER`, `EMAIL_FROM`, `RESEND_API_KEY` or `POSTMARK_SERVER_TOKEN` | backend | Required; domain needs SPF, DKIM, DMARC |
 | `STORAGE_BUCKET`, `STORAGE_REGION`, `STORAGE_ENDPOINT`, `STORAGE_ACCESS_KEY_ID`, `STORAGE_SECRET_ACCESS_KEY` | backend | Required; private bucket, least-privilege key |
 | `RATE_LIMIT_STORE=memory` | set by compose.yml | Correct for the single API container; switch to Upstash before a second instance |
-| `CLAMAV_HOST`, `CLAMAV_PORT` | set by compose.yml | The `clamav` container; without a scanner uploads are stored `not_scanned` |
+| `COMPOSE_PROFILES=scanner`, `CLAMAV_HOST=clamav` | droplet `.env` | Off for now; set both (and a 4 GB Droplet) to scan uploads |
 | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `BILLING_SUBSCRIPTIONS_ENABLED` | backend | Restricted key; billing off on first deploy |
 | `ANTHROPIC_API_KEY`, `ASSISTANT_MODEL`, `ASSISTANT_EFFORT` | backend | Optional; spend cap in console |
 | `LOG_LEVEL` | backend | `info` |
