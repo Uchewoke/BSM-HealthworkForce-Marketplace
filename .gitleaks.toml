@@ -1,0 +1,7 @@
+# gitleaks configuration (run by .github/workflows/ci.yml over the whole git history). Default rules plus one allowlist.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Backend test fixtures: made-up credential numbers and fixed test-only secrets (never real values)"
+paths = ['''^backend/tests/.*''']
