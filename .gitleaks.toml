@@ -2,6 +2,6 @@
 [extend]
 useDefault = true
 
-[[allowlists]]
+[allowlist]
 description = "Backend test fixtures: made-up credential numbers and fixed test-only secrets (never real values)"
 paths = ['''^backend/tests/.*''']
